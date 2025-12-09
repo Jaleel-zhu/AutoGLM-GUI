@@ -7,6 +7,7 @@ export interface ChatResponse {
 }
 
 export interface StatusResponse {
+  version: string
   initialized: boolean
   step_count: number
 }
