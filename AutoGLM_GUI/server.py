@@ -1,6 +1,5 @@
 """AutoGLM-GUI Backend API Server."""
 
-import asyncio
 import json
 import os
 from importlib.metadata import version as get_version
@@ -11,12 +10,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
-
 from phone_agent import PhoneAgent
-from phone_agent.adb import get_screenshot
 from phone_agent.agent import AgentConfig
 from phone_agent.model import ModelConfig
+from pydantic import BaseModel, Field
+
+from AutoGLM_GUI.adb_plus import capture_screenshot
 
 # 获取包版本号
 try:
@@ -201,7 +200,7 @@ def chat_stream(request: ChatRequest):
                     "finished": step_result.finished,
                 }
 
-                yield f"event: step\n"
+                yield "event: step\n"
                 yield f"data: {json.dumps(event_data, ensure_ascii=False)}\n\n"
 
                 if step_result.finished:
@@ -211,7 +210,7 @@ def chat_stream(request: ChatRequest):
                         "steps": agent.step_count,
                         "success": step_result.success,
                     }
-                    yield f"event: done\n"
+                    yield "event: done\n"
                     yield f"data: {json.dumps(done_data, ensure_ascii=False)}\n\n"
                     break
 
@@ -222,7 +221,7 @@ def chat_stream(request: ChatRequest):
                         "steps": agent.step_count,
                         "success": step_result.success,
                     }
-                    yield f"event: done\n"
+                    yield "event: done\n"
                     yield f"data: {json.dumps(done_data, ensure_ascii=False)}\n\n"
                     break
 
@@ -237,7 +236,7 @@ def chat_stream(request: ChatRequest):
                 "type": "error",
                 "message": str(e),
             }
-            yield f"event: error\n"
+            yield "event: error\n"
             yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
@@ -296,7 +295,7 @@ async def reset_agent() -> dict:
 def take_screenshot(request: ScreenshotRequest) -> ScreenshotResponse:
     """获取设备截图。此操作无副作用，不影响 PhoneAgent 运行。"""
     try:
-        screenshot = get_screenshot(device_id=request.device_id)
+        screenshot = capture_screenshot(device_id=request.device_id)
         return ScreenshotResponse(
             success=True,
             image=screenshot.base64_data,

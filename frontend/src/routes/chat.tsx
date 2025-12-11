@@ -110,8 +110,8 @@ function ChatComponent() {
     // 立即获取一次
     fetchScreenshot();
 
-    // 设置定时器每 3 秒刷新
-    const interval = setInterval(fetchScreenshot, 3000);
+    // 设置定时器每 0.5 秒刷新
+    const interval = setInterval(fetchScreenshot, 500);
 
     return () => clearInterval(interval);
   }, []);

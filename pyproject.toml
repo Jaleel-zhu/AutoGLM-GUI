@@ -40,10 +40,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["AutoGLM_GUI"]
+packages = ["AutoGLM_GUI", "adb_plus"]
 
 [tool.hatch.build.targets.sdist]
-include = ["AutoGLM_GUI/**/*"]
+include = ["AutoGLM_GUI/**/*", "adb_plus/**/*"]
 
 [tool.uv.sources]
 phone-agent = { git = "https://github.com/zai-org/Open-AutoGLM.git", rev = "a3b8e83ee9012319b1fbfb8d4989b73c1435ee23" }

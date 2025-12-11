@@ -52,8 +52,8 @@ def capture_screenshot(
         if not data:
             continue
 
-        # Fix common CRLF issue in screencap output
-        data = data.replace(b"\r\r\n", b"\n").replace(b"\r\n", b"\n")
+        # NOTE: Do NOT do CRLF normalization for binary PNG data from exec-out
+        # The PNG signature contains \r\n bytes that must be preserved
 
         if not _is_valid_png(data):
             continue
