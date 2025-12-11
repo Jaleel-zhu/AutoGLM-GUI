@@ -6,7 +6,7 @@ from importlib.metadata import version as get_version
 from importlib.resources import files
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +16,7 @@ from phone_agent.model import ModelConfig
 from pydantic import BaseModel, Field
 
 from AutoGLM_GUI.adb_plus import capture_screenshot
+from AutoGLM_GUI.scrcpy_stream import ScrcpyStreamer
 
 # 获取包版本号
 try:
@@ -312,6 +313,49 @@ def take_screenshot(request: ScreenshotRequest) -> ScreenshotResponse:
             is_sensitive=False,
             error=str(e),
         )
+
+
+@app.websocket("/api/video/stream")
+async def video_stream_ws(websocket: WebSocket):
+    """Stream real-time H.264 video from scrcpy server via WebSocket."""
+    await websocket.accept()
+    print("[video/stream] WebSocket connection accepted")
+
+    streamer = ScrcpyStreamer(max_size=1280, bit_rate=4_000_000)
+
+    try:
+        # Start scrcpy server and establish connection
+        print("[video/stream] Starting scrcpy server...")
+        await streamer.start()
+        print("[video/stream] Scrcpy server started successfully")
+
+        # Stream H.264 data to client
+        chunk_count = 0
+        while True:
+            try:
+                h264_chunk = await streamer.read_h264_chunk()
+                await websocket.send_bytes(h264_chunk)
+                chunk_count += 1
+                if chunk_count % 100 == 0:
+                    print(f"[video/stream] Sent {chunk_count} chunks")
+            except ConnectionError as e:
+                print(f"[video/stream] Connection error after {chunk_count} chunks: {e}")
+                await websocket.send_json({"error": f"Stream error: {str(e)}"})
+                break
+
+    except WebSocketDisconnect:
+        print("[video/stream] Client disconnected")
+    except Exception as e:
+        import traceback
+        print(f"[video/stream] Error: {e}")
+        print(f"[video/stream] Traceback:\n{traceback.format_exc()}")
+        try:
+            await websocket.send_json({"error": str(e)})
+        except Exception:
+            pass
+    finally:
+        streamer.stop()
+        print("[video/stream] Streamer stopped")
 
 
 # 静态文件托管 - 使用包内资源定位

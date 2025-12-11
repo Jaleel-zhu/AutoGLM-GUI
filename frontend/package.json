@@ -19,6 +19,7 @@
     "@tanstack/react-router": "^1.140.0",
     "@tanstack/react-router-devtools": "^1.140.0",
     "@tanstack/router-plugin": "^1.140.0",
+    "jmuxer": "^2.1.0",
     "postcss": "^8.5.1",
     "react": "^19.2.1",
     "react-dom": "^19.0.0",

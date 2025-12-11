@@ -12,6 +12,7 @@ import {
   type ErrorEvent,
   type ScreenshotResponse,
 } from '../api';
+import { ScrcpyPlayer } from '../components/ScrcpyPlayer';
 
 export const Route = createFileRoute('/chat')({
   component: ChatComponent,
@@ -111,7 +112,7 @@ function ChatComponent() {
     fetchScreenshot();
 
     // 设置定时器每 0.5 秒刷新
-    const interval = setInterval(fetchScreenshot, 500);
+    const interval = setInterval(fetchScreenshot, 500000);
 
     return () => clearInterval(interval);
   }, []);
@@ -445,37 +446,9 @@ function ChatComponent() {
         </div>
       </div>
 
-      {/* Screenshot Display */}
-      <div className="w-full max-w-xs h-[750px] border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg bg-white dark:bg-gray-800 flex items-center justify-center overflow-hidden">
-        {screenshot && screenshot.success ? (
-          <div className="relative w-full h-full flex items-center justify-center">
-            <img
-              src={`data:image/png;base64,${screenshot.image}`}
-              alt="Device Screenshot"
-              className="max-w-full max-h-full object-contain"
-              style={{
-                width: screenshot.width > screenshot.height ? '100%' : 'auto',
-                height:
-                  screenshot.width > screenshot.height ? 'auto' : '100%',
-              }}
-            />
-            {screenshot.is_sensitive && (
-              <div className="absolute top-2 right-2 px-2 py-1 bg-yellow-500 text-white text-xs rounded">
-                敏感内容
-              </div>
-            )}
-          </div>
-        ) : screenshot?.error ? (
-          <div className="text-center text-red-500 dark:text-red-400">
-            <p className="mb-2">截图失败</p>
-            <p className="text-xs">{screenshot.error}</p>
-          </div>
-        ) : (
-          <div className="text-center text-gray-500 dark:text-gray-400">
-            <div className="w-8 h-8 border-4 border-gray-300 border-t-blue-500 rounded-full animate-spin mx-auto mb-2" />
-            <p>加载中...</p>
-          </div>
-        )}
+      {/* Real-time Video Stream */}
+      <div className="w-full max-w-xs h-[750px] border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg bg-gray-900 overflow-hidden">
+        <ScrcpyPlayer className="w-full h-full" />
       </div>
     </div>
   );
