@@ -84,7 +84,7 @@ function ChatComponent() {
             setInitialized(false);
           }
         }
-      } catch (error) {
+      } catch {
         setInitialized(false);
         setError('无法连接到后端服务');
       }

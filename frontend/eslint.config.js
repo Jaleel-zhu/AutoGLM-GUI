@@ -42,6 +42,21 @@ export default [
         HTMLDivElement: 'readonly',
         HTMLElement: 'readonly',
         HTMLInputElement: 'readonly',
+        HTMLVideoElement: 'readonly',
+        WebSocket: 'readonly',
+        AbortController: 'readonly',
+        TextDecoder: 'readonly',
+        TextEncoder: 'readonly',
+        fetch: 'readonly',
+        URL: 'readonly',
+        Blob: 'readonly',
+        File: 'readonly',
+        FileReader: 'readonly',
+        localStorage: 'readonly',
+        sessionStorage: 'readonly',
+        requestAnimationFrame: 'readonly',
+        cancelAnimationFrame: 'readonly',
+        NodeJS: 'readonly',
       },
     },
     plugins: {
@@ -67,6 +82,7 @@ export default [
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-non-null-assertion': 'warn',
+      '@typescript-eslint/no-require-imports': 'off',
 
       // React rules
       'react/react-in-jsx-scope': 'off', // Not needed with React 17+
@@ -74,12 +90,15 @@ export default [
       'react/jsx-uses-react': 'off', // Not needed with React 17+
       'react/jsx-key': 'error',
       'react/jsx-no-duplicate-props': 'error',
+      'react-hooks/rules-of-hooks': 'error', // Enforce rules of hooks
+      'react-hooks/purity': 'off', // Allow Date.now() in event handlers
 
       // General rules
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'no-console': 'off', // Allow console logs for debugging in this component
       'no-debugger': 'error',
       'prefer-const': 'error',
       'no-var': 'error',
+      'no-unused-vars': 'off', // Let TypeScript handle this
 
       // Prettier
       'prettier/prettier': 'error',

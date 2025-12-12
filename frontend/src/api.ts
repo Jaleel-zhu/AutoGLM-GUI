@@ -238,7 +238,10 @@ export async function sendSwipe(
   };
 
   try {
-    const res = await axios.post<SwipeResponse>('/api/control/swipe', swipeData);
+    const res = await axios.post<SwipeResponse>(
+      '/api/control/swipe',
+      swipeData
+    );
     return res.data;
   } catch (error) {
     console.error('[API] Swipe request failed:', error);

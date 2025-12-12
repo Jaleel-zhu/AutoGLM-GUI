@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import React from 'react';
 import jMuxer from 'jmuxer';
 import { sendTap, sendSwipe, getScreenshot } from '../api';
 
@@ -39,8 +40,16 @@ export function ScrcpyPlayer({
 
   // Swipe detection state
   const isDraggingRef = useRef(false);
-  const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const [swipeLine, setSwipeLine] = useState<{ id: number; startX: number; startY: number; endX: number; endY: number } | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(
+    null
+  );
+  const [swipeLine, setSwipeLine] = useState<{
+    id: number;
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+  } | null>(null);
 
   // Device actual resolution (not video stream resolution)
   const [deviceResolution, setDeviceResolution] = useState<{
@@ -50,11 +59,11 @@ export function ScrcpyPlayer({
 
   // Latency monitoring
   const frameCountRef = useRef(0);
-  const lastStatsTimeRef = useRef(Date.now());
+  const lastStatsTimeRef = useRef<number>(0);
 
   // Error recovery (debounce reconnects)
-  const lastErrorTimeRef = useRef(0);
-  const lastConnectTimeRef = useRef(0);
+  const lastErrorTimeRef = useRef<number>(0);
+  const lastConnectTimeRef = useRef<number>(0);
 
   // Use ref to store latest callback to avoid useEffect re-running
   const onFallbackRef = useRef(onFallback);
@@ -141,15 +150,11 @@ export function ScrcpyPlayer({
   const handleMouseDown = (event: React.MouseEvent<HTMLVideoElement>) => {
     if (!enableControl || !videoRef.current || status !== 'connected') return;
 
-    const rect = videoRef.current.getBoundingClientRect();
-    const startX = event.clientX - rect.left;
-    const startY = event.clientY - rect.top;
-
     isDraggingRef.current = true;
     dragStartRef.current = {
       x: event.clientX,
       y: event.clientY,
-      time: Date.now()
+      time: Date.now(),
     };
   };
 
@@ -164,7 +169,7 @@ export function ScrcpyPlayer({
       startX: dragStartRef.current.x,
       startY: dragStartRef.current.y,
       endX: event.clientX,
-      endY: event.clientY
+      endY: event.clientY,
     });
   };
 
@@ -177,7 +182,7 @@ export function ScrcpyPlayer({
     const dragEnd = {
       x: event.clientX,
       y: event.clientY,
-      time: Date.now()
+      time: Date.now(),
     };
 
     const deltaX = dragEnd.x - dragStartRef.current.x;
@@ -199,7 +204,12 @@ export function ScrcpyPlayer({
 
     // Check if it's a valid swipe (minimum distance and reasonable duration)
     if (distance < 30 || deltaTime < 100 || deltaTime > 2000) {
-      console.log('[ScrcpyPlayer] Invalid swipe: distance=', distance, 'duration=', deltaTime);
+      console.log(
+        '[ScrcpyPlayer] Invalid swipe: distance=',
+        distance,
+        'duration=',
+        deltaTime
+      );
       dragStartRef.current = null;
       return;
     }
@@ -217,7 +227,9 @@ export function ScrcpyPlayer({
     end: { x: number; y: number; time: number }
   ) => {
     if (!videoRef.current || !deviceResolution) {
-      console.warn('[ScrcpyPlayer] Cannot execute swipe: video or device resolution not available');
+      console.warn(
+        '[ScrcpyPlayer] Cannot execute swipe: video or device resolution not available'
+      );
       return;
     }
 
@@ -236,7 +248,9 @@ export function ScrcpyPlayer({
     );
 
     if (!startDeviceCoords || !endDeviceCoords) {
-      console.warn('[ScrcpyPlayer] Cannot execute swipe: coordinate transformation failed');
+      console.warn(
+        '[ScrcpyPlayer] Cannot execute swipe: coordinate transformation failed'
+      );
       return;
     }
 
@@ -676,8 +690,18 @@ export function ScrcpyPlayer({
             strokeWidth="3"
             strokeLinecap="round"
           />
-          <circle cx={swipeLine.startX} cy={swipeLine.startY} r="6" fill="rgba(59, 130, 246, 0.8)" />
-          <circle cx={swipeLine.endX} cy={swipeLine.endY} r="6" fill="rgba(239, 68, 68, 0.8)" />
+          <circle
+            cx={swipeLine.startX}
+            cy={swipeLine.startY}
+            r="6"
+            fill="rgba(59, 130, 246, 0.8)"
+          />
+          <circle
+            cx={swipeLine.endX}
+            cy={swipeLine.endY}
+            r="6"
+            fill="rgba(239, 68, 68, 0.8)"
+          />
         </svg>
       )}
 
