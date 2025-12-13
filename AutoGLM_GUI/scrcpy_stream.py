@@ -16,6 +16,7 @@ class ScrcpyStreamer:
         max_size: int = 1280,
         bit_rate: int = 1_000_000,
         port: int = 27183,
+        idr_interval_s: int = 1,
     ):
         """Initialize ScrcpyStreamer.
 
@@ -24,11 +25,13 @@ class ScrcpyStreamer:
             max_size: Maximum video dimension
             bit_rate: Video bitrate in bps
             port: TCP port for scrcpy socket
+            idr_interval_s: Seconds between IDR frames (controls GOP length)
         """
         self.device_id = device_id
         self.max_size = max_size
         self.bit_rate = bit_rate
         self.port = port
+        self.idr_interval_s = idr_interval_s
 
         self.scrcpy_process: subprocess.Popen | None = None
         self.tcp_socket: socket.socket | None = None
@@ -194,8 +197,8 @@ class ScrcpyStreamer:
                 "audio=false",
                 "control=false",
                 "cleanup=false",
-                # Force I-frame (IDR) every 1 second for reliable reconnection
-                "video_codec_options=i-frame-interval=1",
+                # Force I-frame (IDR) at fixed interval (GOP length) for reliable reconnection
+                f"video_codec_options=i-frame-interval={self.idr_interval_s}",
             ]
             cmd.extend(server_args)
 

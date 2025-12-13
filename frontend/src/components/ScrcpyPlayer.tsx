@@ -93,9 +93,13 @@ export function ScrcpyPlayer({
   const frameCountRef = useRef(0);
   const lastStatsTimeRef = useRef<number>(0);
 
-  // Error recovery (debounce reconnects)
+  // Error recovery tracking
   const lastErrorTimeRef = useRef<number>(0);
   const lastConnectTimeRef = useRef<number>(0);
+  const resetAttemptsRef = useRef<number>(0); // Track consecutive reset attempts
+  const lastResetTimeRef = useRef<number>(0); // Track last reset time for debouncing
+  const MAX_RESET_ATTEMPTS = 3; // Max reset attempts before full reconnect
+  const RESET_DEBOUNCE_MS = 1000; // Minimum time between resets
 
   // Use ref to store latest callback to avoid useEffect re-running
   const onFallbackRef = useRef(onFallback);
@@ -702,54 +706,89 @@ export function ScrcpyPlayer({
           fps: 30,
           debug: false,
           clearBuffer: true, // ✅ Clear buffer on errors to prevent buildup
+
+          // ✅ Enhanced error handling with reset-first strategy
           onError: (error: { name: string; error: string }) => {
             console.error('[jMuxer] Decoder error:', error);
 
-            // ✅ On buffer error, immediately reconnect
+            // Handle buffer errors with progressive recovery strategy
             if (
               error.name === 'InvalidStateError' &&
               error.error === 'buffer error'
             ) {
               const now = Date.now();
-              const timeSinceLastError = now - lastErrorTimeRef.current;
-              const timeSinceConnect = now - lastConnectTimeRef.current;
+              const timeSinceLastReset = now - lastResetTimeRef.current;
 
-              // Smart debounce logic:
-              // - If error happens soon after connect (< 1s), allow quick retry
-              //   (means connection itself failed, not buffer overflow)
-              // - Otherwise, require 2s between reconnects
-              const shouldReconnect =
-                timeSinceConnect < 1000
-                  ? timeSinceLastError > 500 // Quick retry for new connection failures
-                  : timeSinceLastError > 2000; // Normal debounce for buffer overflows
-
-              if (shouldReconnect) {
-                lastErrorTimeRef.current = now;
+              // Debounce: prevent rapid consecutive resets
+              if (timeSinceLastReset < RESET_DEBOUNCE_MS) {
                 console.warn(
-                  '[jMuxer] ⚠️ Buffer error detected, reconnecting...'
+                  `[jMuxer] Reset debounced (${timeSinceLastReset}ms since last reset)`
                 );
+                return;
+              }
 
-                // Immediate reconnect (but only if device hasn't changed)
-                const errorDeviceId = currentDeviceId;
-                if (connectFn) {
-                  setTimeout(() => {
-                    if (deviceIdRef.current === errorDeviceId) {
-                      if (connectFn) {
-                        connectFn();
-                      }
-                    } else {
-                      console.log(
-                        `[jMuxer] Device changed (${errorDeviceId} -> ${deviceIdRef.current}), skip reconnect`
-                      );
-                    }
-                  }, 100);
+              lastResetTimeRef.current = now;
+              resetAttemptsRef.current++;
+
+              console.warn(
+                `[jMuxer] ⚠️ Buffer error detected (attempt ${resetAttemptsRef.current}/${MAX_RESET_ATTEMPTS})`
+              );
+
+              // Strategy: Try reset() first, only reconnect as last resort
+              if (resetAttemptsRef.current <= MAX_RESET_ATTEMPTS) {
+                // ✅ OPTIMIZED: Use reset() instead of destroy + reconnect
+                if (jmuxerRef.current) {
+                  try {
+                    console.log('[jMuxer] Attempting lightweight reset()...');
+                    jmuxerRef.current.reset();
+                    console.log('[jMuxer] ✓ Reset successful');
+
+                    // If reset succeeds, don't reconnect WebSocket
+                    // Just continue receiving data on existing connection
+                    return;
+                  } catch (resetError) {
+                    console.error('[jMuxer] Reset failed:', resetError);
+                    // Fall through to full reconnect
+                  }
                 }
-              } else {
+              }
+
+              // Only do full reconnect if:
+              // 1. Reset failed, OR
+              // 2. We've exceeded max reset attempts
+              if (resetAttemptsRef.current > MAX_RESET_ATTEMPTS) {
                 console.warn(
-                  `[jMuxer] Reconnect skipped (debounced: ${timeSinceLastError}ms since last error)`
+                  `[jMuxer] Max reset attempts (${MAX_RESET_ATTEMPTS}) exceeded, doing full reconnect...`
                 );
+                // Reset counter for next cycle
+                resetAttemptsRef.current = 0;
+              }
+
+              // Full reconnect (destroy + recreate)
+              lastErrorTimeRef.current = now;
+              const errorDeviceId = currentDeviceId;
+
+              if (connectFn) {
+                setTimeout(() => {
+                  if (deviceIdRef.current === errorDeviceId) {
+                    if (connectFn) {
+                      connectFn();
+                    }
+                  } else {
+                    console.log(
+                      `[jMuxer] Device changed (${errorDeviceId} -> ${deviceIdRef.current}), skip reconnect`
+                    );
+                  }
+                }, 100);
               }
             }
+          },
+
+          // ✅ Disabled: jMuxer has a bug treating H.264 slices as separate frames (Issue #44)
+          // This causes false "Missing video frames" warnings when frames are sliced (common in complex scenes)
+          // See: https://github.com/samirkumardas/jmuxer/issues/44
+          onMissingVideoFrames: (frames: unknown) => {
+            console.warn('[jMuxer] Missing video frames detected:', frames);
           },
         });
 
@@ -766,6 +805,10 @@ export function ScrcpyPlayer({
             `[ScrcpyPlayer] WebSocket connected for device ${currentDeviceId}`
           );
           setStatus('connected');
+
+          // ✅ Reset error recovery counters on successful connection
+          resetAttemptsRef.current = 0;
+          lastResetTimeRef.current = 0;
 
           // Notify parent component that video stream is ready
           if (onStreamReadyRef.current) {
