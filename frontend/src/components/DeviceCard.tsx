@@ -22,7 +22,7 @@ export function DeviceCard({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-4 py-3 rounded-lg transition-all ${
+      className={`w-full text-left px-4 py-3 rounded-lg transition-all duration-500 ease-[cubic-bezier(0.4,0.0,0.2,1)] h-12 shrink-0 ${
         isActive
           ? 'bg-blue-500 text-white shadow-md'
           : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700'
