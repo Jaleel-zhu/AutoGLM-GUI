@@ -53,6 +53,25 @@ export function DevicePanel({
   >('auto');
   const [tapFeedback, setTapFeedback] = useState<string | null>(null);
 
+  // 选项卡显示状态管理
+  const [areTabsVisible, setAreTabsVisible] = useState(() => {
+    try {
+      const saved = localStorage.getItem('display-tabs-visible');
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch (error) {
+      console.warn('Failed to load tabs visibility state:', error);
+      return true;
+    }
+  });
+
+  // 保存选项卡显示状态到 localStorage
+  useEffect(() => {
+    localStorage.setItem(
+      'display-tabs-visible',
+      JSON.stringify(areTabsVisible)
+    );
+  }, [areTabsVisible]);
+
   // Refs for resource cleanup
   const chatStreamRef = useRef<{ close: () => void } | null>(null);
   const videoStreamRef = useRef<{ close: () => void } | null>(null);
@@ -285,6 +304,11 @@ export function DevicePanel({
     setUseVideoStream(false);
   }, []);
 
+  // 切换选项卡显示状态
+  const toggleTabsVisibility = () => {
+    setAreTabsVisible(!areTabsVisible);
+  };
+
   return (
     <div className="flex-1 flex gap-4 p-4 items-stretch justify-center min-h-0">
       {/* Chatbox */}
@@ -427,8 +451,33 @@ export function DevicePanel({
 
       {/* Screen Monitor */}
       <div className="w-full max-w-xs min-h-0 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg bg-gray-900 overflow-hidden relative">
+        {/* 附着的选项卡开关按钮（选项卡隐藏时显示） */}
+        {!areTabsVisible && (
+          <button
+            onClick={toggleTabsVisibility}
+            className="absolute top-2 right-2 z-10 w-8 h-8 bg-gray-500 hover:bg-blue-600 text-white rounded-full shadow-lg transition-all duration-300 flex items-center justify-center opacity-20 hover:opacity-100 cursor-pointer"
+            title="显示选项卡"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+              />
+            </svg>
+          </button>
+        )}
+
         {/* Mode Switch Button */}
-        <div className="absolute top-2 right-2 z-10 flex gap-1 bg-black/70 rounded-lg p-1">
+        <div
+          className={`${areTabsVisible ? 'absolute top-2 right-2' : 'hidden'} z-10 flex gap-1 bg-black/70 rounded-lg p-1`}
+        >
           <button
             onClick={() => setDisplayMode('auto')}
             className={`px-3 py-1 text-xs rounded transition-colors ${
@@ -458,6 +507,27 @@ export function DevicePanel({
             }`}
           >
             截图
+          </button>
+
+          {/* 隐藏选项卡按钮 */}
+          <button
+            onClick={toggleTabsVisibility}
+            className="ml-1 px-2 py-1 text-xs rounded transition-colors bg-gray-600 text-gray-300 hover:bg-gray-500"
+            title="隐藏选项卡"
+          >
+            <svg
+              className="w-3 h-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
           </button>
         </div>
 
