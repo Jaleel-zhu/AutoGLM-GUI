@@ -312,7 +312,7 @@ function ChatComponent() {
       />
 
       {/* Main content */}
-      <div className="flex-1 relative flex items-stretch justify-center min-h-0">
+      <div className="flex-1 relative flex items-stretch justify-center min-h-0 px-4 py-4">
         {devices.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center bg-slate-50 dark:bg-slate-950">
             <div className="text-center">

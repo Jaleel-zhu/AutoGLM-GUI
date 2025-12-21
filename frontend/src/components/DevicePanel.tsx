@@ -66,6 +66,7 @@ export function DevicePanel({
   const [displayMode, setDisplayMode] = useState<
     'auto' | 'video' | 'screenshot'
   >('auto');
+  const [isComposing, setIsComposing] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const feedbackTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -309,7 +310,7 @@ export function DevicePanel({
   }, [deviceId, videoStreamFailed, displayMode]);
 
   const handleInputKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === 'Enter' && !isComposing && !event.shiftKey) {
       event.preventDefault();
       handleSend();
     }
@@ -507,12 +508,14 @@ export function DevicePanel({
 
         {/* Input area */}
         <div className="p-4 border-t border-slate-200 dark:border-slate-800">
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
             <Input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleInputKeyDown}
+              onCompositionStart={() => setIsComposing(true)}
+              onCompositionEnd={() => setIsComposing(false)}
               placeholder={
                 !isConfigured
                   ? 'Please configure first'
@@ -528,7 +531,7 @@ export function DevicePanel({
               disabled={loading || !input.trim()}
               size="icon"
               variant="twitter"
-              className="h-10 w-10 rounded-full"
+              className="h-10 w-10 rounded-full flex-shrink-0"
             >
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
