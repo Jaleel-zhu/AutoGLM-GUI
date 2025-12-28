@@ -16,9 +16,11 @@ import {
   History,
   ListChecks,
   Square,
+  Brain,
 } from 'lucide-react';
 import { throttle } from 'lodash';
 import { ScrcpyPlayer } from './ScrcpyPlayer';
+import { DualModelPanel, useDualModelState } from './DualModelPanel';
 import type {
   ScreenshotResponse,
   ThinkingChunkEvent,
@@ -26,6 +28,7 @@ import type {
   DoneEvent,
   ErrorEvent,
   Workflow,
+  DualModelStreamEvent,
 } from '../api';
 import {
   abortChat,
@@ -34,6 +37,10 @@ import {
   resetChat,
   sendMessageStream,
   listWorkflows,
+  initDualModel,
+  sendDualModelStream,
+  abortDualModelChat,
+  resetDualModel,
 } from '../api';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -112,6 +119,9 @@ export function DevicePanel({
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [showWorkflowPopover, setShowWorkflowPopover] = useState(false);
+  const [dualModelEnabled, setDualModelEnabled] = useState(false);
+  const [dualModelInitialized, setDualModelInitialized] = useState(false);
+  const { state: dualModelState, handleEvent: handleDualModelEvent, reset: resetDualModelState } = useDualModelState();
   const feedbackTimeoutRef = useRef<number | null>(null);
 
   const showFeedback = (
@@ -167,6 +177,7 @@ export function DevicePanel({
   };
 
   const chatStreamRef = useRef<{ close: () => void } | null>(null);
+  const dualModelStreamRef = useRef<{ close: () => void } | null>(null);
   const videoStreamRef = useRef<{ close: () => void } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -229,6 +240,41 @@ export function DevicePanel({
       setError(errorMessage);
     }
   }, [deviceId, config]);
+
+  // Initialize dual model
+  const handleInitDualModel = useCallback(async () => {
+    if (!config) return;
+
+    try {
+      await initDualModel({
+        device_id: deviceId,
+        decision_base_url: 'https://api-inference.modelscope.cn/v1',
+        decision_api_key: 'ms-0f81c6c6-e3a2-4675-9126-ef56bcca4daf',
+        decision_model_name: 'ZhipuAI/GLM-4.7',
+        vision_base_url: config.base_url,
+        vision_api_key: config.api_key,
+        vision_model_name: config.model_name,
+      });
+      setDualModelInitialized(true);
+      setError(null);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Dual model initialization failed';
+      setError(errorMessage);
+    }
+  }, [deviceId, config]);
+
+  // Toggle dual model mode
+  const handleToggleDualModel = useCallback(async () => {
+    if (!dualModelEnabled) {
+      if (!dualModelInitialized) {
+        await handleInitDualModel();
+      }
+      setDualModelEnabled(true);
+    } else {
+      setDualModelEnabled(false);
+    }
+  }, [dualModelEnabled, dualModelInitialized, handleInitDualModel]);
 
   // Auto-initialize on mount if configured
   useEffect(() => {
@@ -542,9 +588,143 @@ export function DevicePanel({
     setFeedbackType,
   ]);
 
+  // Dual model send function
+  const handleSendDualModel = useCallback(async () => {
+    const inputValue = input.trim();
+    if (!inputValue || loading) return;
+
+    if (!dualModelInitialized) {
+      await handleInitDualModel();
+    }
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: inputValue,
+      timestamp: new Date(),
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setLoading(true);
+    setError(null);
+    resetDualModelState();
+
+    const agentMessageId = (Date.now() + 1).toString();
+    const agentMessage: Message = {
+      id: agentMessageId,
+      role: 'agent',
+      content: '',
+      timestamp: new Date(),
+      thinking: [],
+      actions: [],
+      isStreaming: true,
+    };
+
+    setMessages(prev => [...prev, agentMessage]);
+
+    const stream = sendDualModelStream(
+      userMessage.content,
+      deviceId,
+      (event: DualModelStreamEvent) => {
+        handleDualModelEvent(event);
+
+        if (event.type === 'task_complete') {
+          const completeEvent = event as { type: 'task_complete'; success: boolean; message: string; steps: number };
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === agentMessageId
+                ? {
+                    ...msg,
+                    content: completeEvent.message,
+                    success: completeEvent.success,
+                    steps: completeEvent.steps,
+                    isStreaming: false,
+                  }
+                : msg
+            )
+          );
+          setLoading(false);
+          dualModelStreamRef.current = null;
+        } else if (event.type === 'error') {
+          const errorEvent = event as { type: 'error'; message: string };
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === agentMessageId
+                ? {
+                    ...msg,
+                    content: `Error: ${errorEvent.message}`,
+                    success: false,
+                    isStreaming: false,
+                  }
+                : msg
+            )
+          );
+          setLoading(false);
+          setError(errorEvent.message);
+          dualModelStreamRef.current = null;
+        } else if (event.type === 'aborted') {
+          setMessages(prev =>
+            prev.map(msg =>
+              msg.id === agentMessageId
+                ? {
+                    ...msg,
+                    content: 'Task aborted',
+                    success: false,
+                    isStreaming: false,
+                  }
+                : msg
+            )
+          );
+          setLoading(false);
+          dualModelStreamRef.current = null;
+        }
+      },
+      (error: Error) => {
+        setMessages(prev =>
+          prev.map(msg =>
+            msg.id === agentMessageId
+              ? {
+                  ...msg,
+                  content: `Error: ${error.message}`,
+                  success: false,
+                  isStreaming: false,
+                }
+              : msg
+          )
+        );
+        setLoading(false);
+        setError(error.message);
+        dualModelStreamRef.current = null;
+      }
+    );
+
+    dualModelStreamRef.current = stream;
+  }, [
+    input,
+    loading,
+    dualModelInitialized,
+    deviceId,
+    handleInitDualModel,
+    handleDualModelEvent,
+    resetDualModelState,
+  ]);
+
+  // Unified send function
+  const handleSendMessage = useCallback(async () => {
+    if (dualModelEnabled) {
+      await handleSendDualModel();
+    } else {
+      await handleSend();
+    }
+  }, [dualModelEnabled, handleSendDualModel, handleSend]);
+
   const handleReset = useCallback(async () => {
     if (chatStreamRef.current) {
       chatStreamRef.current.close();
+    }
+    if (dualModelStreamRef.current) {
+      dualModelStreamRef.current.close();
     }
 
     setMessages([]);
@@ -553,24 +733,40 @@ export function DevicePanel({
     setShowNewMessageNotice(false);
     setIsAtBottom(true);
     chatStreamRef.current = null;
+    dualModelStreamRef.current = null;
     prevMessageCountRef.current = 0;
     prevMessageSigRef.current = null;
+    resetDualModelState();
 
-    await resetChat(deviceId);
-  }, [deviceId]);
+    if (dualModelEnabled) {
+      await resetDualModel(deviceId);
+    } else {
+      await resetChat(deviceId);
+    }
+  }, [deviceId, dualModelEnabled, resetDualModelState]);
 
   const handleAbortChat = useCallback(async () => {
-    if (!chatStreamRef.current) return;
+    if (!chatStreamRef.current && !dualModelStreamRef.current) return;
 
     setAborting(true);
 
     try {
       // Close SSE connection
-      chatStreamRef.current.close();
-      chatStreamRef.current = null;
+      if (chatStreamRef.current) {
+        chatStreamRef.current.close();
+        chatStreamRef.current = null;
+      }
+      if (dualModelStreamRef.current) {
+        dualModelStreamRef.current.close();
+        dualModelStreamRef.current = null;
+      }
 
       // Notify backend to abort
-      await abortChat(deviceId);
+      if (dualModelEnabled) {
+        await abortDualModelChat(deviceId);
+      } else {
+        await abortChat(deviceId);
+      }
 
       // Show feedback
       setFeedbackMessage(t.chat.aborted);
@@ -585,7 +781,7 @@ export function DevicePanel({
       setLoading(false);
       setAborting(false);
     }
-  }, [deviceId, t]);
+  }, [deviceId, dualModelEnabled, t]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -634,6 +830,9 @@ export function DevicePanel({
     return () => {
       if (chatStreamRef.current) {
         chatStreamRef.current.close();
+      }
+      if (dualModelStreamRef.current) {
+        dualModelStreamRef.current.close();
       }
       if (videoStreamRef.current) {
         videoStreamRef.current.close();
@@ -709,7 +908,7 @@ export function DevicePanel({
   ) => {
     if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
-      handleSend();
+      handleSendMessage();
     }
   };
 
@@ -833,6 +1032,21 @@ export function DevicePanel({
               </Badge>
             )}
 
+            {/* Dual Model Toggle */}
+            <Button
+              variant={dualModelEnabled ? 'default' : 'ghost'}
+              size="icon"
+              onClick={handleToggleDualModel}
+              className={`h-8 w-8 rounded-full ${
+                dualModelEnabled
+                  ? 'bg-purple-500 hover:bg-purple-600 text-white'
+                  : 'text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
+              }`}
+              title={dualModelEnabled ? 'Disable dual model' : 'Enable dual model (GLM-4.7 + autoglm-phone)'}
+            >
+              <Brain className="h-4 w-4" />
+            </Button>
+
             <Button
               variant="ghost"
               size="icon"
@@ -844,6 +1058,17 @@ export function DevicePanel({
             </Button>
           </div>
         </div>
+
+        {/* Dual Model Panel */}
+        {dualModelEnabled && (
+          <div className="border-b border-slate-200 dark:border-slate-800 p-4">
+            <DualModelPanel
+              state={dualModelState}
+              isStreaming={loading}
+              className=""
+            />
+          </div>
+        )}
 
         {/* Error message */}
         {error && (
@@ -1091,7 +1316,7 @@ export function DevicePanel({
             {/* Send Button */}
             {!loading && (
               <Button
-                onClick={handleSend}
+                onClick={handleSendMessage}
                 disabled={!input.trim()}
                 size="icon"
                 variant="twitter"

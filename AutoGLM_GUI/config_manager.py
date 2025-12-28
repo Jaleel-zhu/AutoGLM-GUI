@@ -45,6 +45,12 @@ class ConfigModel(BaseModel):
     model_name: str = "autoglm-phone-9b"
     api_key: str = "EMPTY"
 
+    # 双模型配置
+    dual_model_enabled: bool = False
+    decision_base_url: str = "https://api-inference.modelscope.cn/v1"
+    decision_model_name: str = "ZhipuAI/GLM-4.7"
+    decision_api_key: str = ""
+
     @field_validator("base_url")
     @classmethod
     def validate_base_url(cls, v: str) -> str:
@@ -61,6 +67,14 @@ class ConfigModel(BaseModel):
             raise ValueError("model_name cannot be empty")
         return v.strip()
 
+    @field_validator("decision_base_url")
+    @classmethod
+    def validate_decision_base_url(cls, v: str) -> str:
+        """验证 decision_base_url 格式."""
+        if v and not v.startswith(("http://", "https://")):
+            raise ValueError("decision_base_url must start with http:// or https://")
+        return v.rstrip("/")  # 去除尾部斜杠
+
 
 # ==================== 配置层数据类 ====================
 
@@ -72,6 +86,12 @@ class ConfigLayer:
     base_url: Optional[str] = None
     model_name: Optional[str] = None
     api_key: Optional[str] = None
+    # 双模型配置
+    dual_model_enabled: Optional[bool] = None
+    decision_base_url: Optional[str] = None
+    decision_model_name: Optional[str] = None
+    decision_api_key: Optional[str] = None
+
     source: ConfigSource = ConfigSource.DEFAULT
 
     def has_value(self, key: str) -> bool:
@@ -98,6 +118,10 @@ class ConfigLayer:
                 "base_url": self.base_url,
                 "model_name": self.model_name,
                 "api_key": self.api_key,
+                "dual_model_enabled": self.dual_model_enabled,
+                "decision_base_url": self.decision_base_url,
+                "decision_model_name": self.decision_model_name,
+                "decision_api_key": self.decision_api_key,
             }.items()
             if v is not None
         }
