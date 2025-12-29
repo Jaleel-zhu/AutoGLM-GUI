@@ -5,6 +5,11 @@ import path from 'path';
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    __BACKEND_VERSION__: JSON.stringify(
+      process.env.VITE_BACKEND_VERSION || 'unknown'
+    ),
+  },
   plugins: [
     tanstackRouter({ target: 'react', autoCodeSplitting: true }),
     react(),

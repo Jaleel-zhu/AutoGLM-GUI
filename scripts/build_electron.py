@@ -15,10 +15,12 @@ AutoGLM-GUI Electron 一键构建脚本
 """
 
 import argparse
+import os
 import platform
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 # 修复 Windows 编码问题
@@ -62,7 +64,12 @@ def print_warning(message: str):
     print(f"{Color.YELLOW}⚠ {message}{Color.RESET}")
 
 
-def run_command(cmd: list[str], cwd: Path | None = None, check: bool = True) -> bool:
+def run_command(
+    cmd: list[str],
+    cwd: Path | None = None,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> bool:
     """执行命令"""
     cmd_str = " ".join(str(c) for c in cmd)
     print(f"{Color.BLUE}$ {cmd_str}{Color.RESET}")
@@ -72,7 +79,13 @@ def run_command(cmd: list[str], cwd: Path | None = None, check: bool = True) -> 
         use_shell = sys.platform == "win32" and cmd[0] in ["pnpm", "npm"]
 
         result = subprocess.run(
-            cmd, cwd=cwd, check=check, capture_output=False, text=True, shell=use_shell
+            cmd,
+            cwd=cwd,
+            check=check,
+            capture_output=False,
+            text=True,
+            shell=use_shell,
+            env=env,
         )
         return result.returncode == 0
     except subprocess.CalledProcessError as e:
@@ -96,6 +109,17 @@ def check_command(cmd: str) -> bool:
         return True
     except (subprocess.CalledProcessError, FileNotFoundError):
         return False
+
+
+def get_backend_version(root_dir: Path) -> str:
+    """读取后端版本号（用于前端构建注入）。"""
+    pyproject_path = root_dir / "pyproject.toml"
+    try:
+        with pyproject_path.open("rb") as file:
+            data = tomllib.load(file)
+        return str(data.get("project", {}).get("version") or "unknown")
+    except Exception:
+        return "unknown"
 
 
 class ElectronBuilder:
@@ -160,7 +184,10 @@ class ElectronBuilder:
 
         # 构建前端
         print("\n构建前端代码...")
-        if not run_command(["pnpm", "build"], cwd=self.frontend_dir):
+        env = os.environ.copy()
+        env["VITE_BACKEND_VERSION"] = get_backend_version(self.root_dir)
+        print(f"前端构建版本: {env['VITE_BACKEND_VERSION']}")
+        if not run_command(["pnpm", "build"], cwd=self.frontend_dir, env=env):
             return False
 
         # 复制前端构建产物到后端 static 目录

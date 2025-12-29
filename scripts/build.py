@@ -10,14 +10,27 @@ Usage:
 """
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).parent.parent
 FRONTEND_DIR = ROOT_DIR / "frontend"
 STATIC_DIR = ROOT_DIR / "AutoGLM_GUI" / "static"
+
+
+def get_backend_version() -> str:
+    """读取后端版本号（用于前端构建注入）。"""
+    pyproject_path = ROOT_DIR / "pyproject.toml"
+    try:
+        with pyproject_path.open("rb") as file:
+            data = tomllib.load(file)
+        return str(data.get("project", {}).get("version") or "unknown")
+    except Exception:
+        return "unknown"
 
 
 def build_frontend() -> bool:
@@ -40,7 +53,10 @@ def build_frontend() -> bool:
 
     # Build
     print("Building frontend...")
-    result = subprocess.run(["pnpm", "build"], cwd=FRONTEND_DIR)
+    env = os.environ.copy()
+    env["VITE_BACKEND_VERSION"] = get_backend_version()
+    print(f"Frontend build version: {env['VITE_BACKEND_VERSION']}")
+    result = subprocess.run(["pnpm", "build"], cwd=FRONTEND_DIR, env=env)
     if result.returncode != 0:
         print("Error: Failed to build frontend.")
         return False

@@ -13,6 +13,9 @@ export const en = {
     starOnGitHub: 'Star on GitHub',
     newVersion: 'New!',
     updateAvailable: 'Update available: v{version}',
+    buildVersion: 'Build: v{version}',
+    versionMismatch: 'Version mismatch',
+    versionMismatchDetail: 'Frontend: v{frontend}, Backend: v{backend}',
   },
   chat: {
     welcomeTitle: 'Welcome to AutoGLM',

@@ -44,6 +44,8 @@ jobs:
           exit 1
 
       - name: Build Frontend
+        env:
+          VITE_BACKEND_VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
           cd frontend
           pnpm install

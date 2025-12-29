@@ -13,6 +13,9 @@ export const zh = {
     starOnGitHub: '在 GitHub 上Star',
     newVersion: '新版本!',
     updateAvailable: '可用更新: v{version}',
+    buildVersion: '构建版本: v{version}',
+    versionMismatch: '版本不匹配',
+    versionMismatchDetail: '前端: v{frontend}，后端: v{backend}',
   },
   chat: {
     welcomeTitle: '欢迎使用 AutoGLM',
