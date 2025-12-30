@@ -22,6 +22,7 @@ AutoGLM 手机助手的现代化 Web 图形界面 - 让 AI 自动化操作 Andro
 
 ## ✨ 特性
 
+- **🧠 双模型协作** - 🆕 决策大模型 + 视觉小模型协作架构，智能任务规划与精准执行分离，支持三种工作模式（DEEP/FAST/TURBO）
 - **完全无线配对** - 🆕 支持 Android 11+ 二维码扫码配对，无需数据线即可连接设备
 - **多设备并发控制** - 同时管理和控制多个 Android 设备，设备间状态完全隔离
 - **对话式任务管理** - 通过聊天界面控制 Android 设备
@@ -40,9 +41,9 @@ AutoGLM 手机助手的现代化 Web 图形界面 - 让 AI 自动化操作 Andro
 
 | 操作系统 | 下载链接 | 说明 |
 |---------|---------|------|
-| 🪟 **Windows** (x64) | [📦 下载便携版 EXE](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.2.1/AutoGLM.GUI.1.2.1.exe) | 适用于 Windows 10/11，免安装 |
-| 🍎 **macOS** (Apple Silicon) | [📦 下载 DMG](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.2.1/AutoGLM.GUI-1.2.1-arm64.dmg) | 适用于 M 芯片 Mac |
-| 🐧 **Linux** (x64) | [📦 下载 AppImage](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.2.1/AutoGLM.GUI-1.2.1.AppImage) \| [deb](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.2.1/autoglm-gui_1.2.1_amd64.deb) \| [tar.gz](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.2.1/autoglm-gui-1.2.1.tar.gz) | 通用格式，支持主流发行版 |
+| 🪟 **Windows** (x64) | [📦 下载便携版 EXE](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.3.0/AutoGLM.GUI.1.3.0.exe) | 适用于 Windows 10/11，免安装 |
+| 🍎 **macOS** (Apple Silicon) | [📦 下载 DMG](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.3.0/AutoGLM.GUI-1.3.0-arm64.dmg) | 适用于 M 芯片 Mac |
+| 🐧 **Linux** (x64) | [📦 下载 AppImage](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.3.0/AutoGLM.GUI-1.3.0.AppImage) \| [deb](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.3.0/autoglm-gui_1.3.0_amd64.deb) \| [tar.gz](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.3.0/autoglm-gui-1.3.0.tar.gz) | 通用格式，支持主流发行版 |
 
 </div>
 
@@ -70,9 +71,26 @@ uvx autoglm-gui
 
 ## 📸 界面预览
 
-### 双模型架构
-决策模型+视觉模型 双模型架构，更好的执行复杂任务
-<img width="879" height="849" alt="图片" src="https://github.com/user-attachments/assets/15e5cf51-5a19-403d-9af3-46f77c2068f5" />
+### 双模型协作架构
+
+**决策大模型（GLM-4.7）+ 视觉小模型（AutoGLM-Phone）** 双模型协作系统，智能规划与精准执行分离，更好地处理复杂任务
+
+**架构特点：**
+- 🧠 **决策大模型**：负责任务分析、计划制定、复杂决策和内容生成
+- 👁️ **视觉小模型**：负责屏幕识别、定位元素和执行具体操作
+- 🔄 **智能协作**：大模型规划任务，小模型批量执行，异常时自动重新规划
+- ⚡ **三种模式**：
+  - **DEEP**：深度思考模式，适合复杂任务，每步都详细分析
+  - **FAST**：快速响应模式，适合简单任务，简洁高效
+  - **TURBO**：极速模式，一次性生成操作序列，性能最优
+
+**核心优势：**
+- 📈 更强智能：大模型提供更深入的任务理解和规划能力
+- 🛡️ 异常恢复：自动检测屏幕卡死、操作失败等异常，智能重试和重新规划
+- 💰 成本优化：TURBO 模式大幅减少大模型调用次数，降低 API 成本
+- 📊 实时可见：流式展示思考过程，透明化决策逻辑
+
+<img width="879" height="849" alt="双模型协作界面" src="https://github.com/user-attachments/assets/15e5cf51-5a19-403d-9af3-46f77c2068f5" />
 
 ### 任务开始
 ![任务开始](https://github.com/user-attachments/assets/b8cb6fbc-ca5b-452c-bcf4-7d5863d4577a)
@@ -228,6 +246,67 @@ AutoGLM-GUI 支持同时控制多个 Android 设备：
 3. **初始化** - 点击"初始化设备"按钮配置 Agent
 4. **对话** - 描述你想要做什么（例如："去美团点一杯霸王茶姬的伯牙绝弦"）
 5. **观察** - Agent 会逐步执行操作，每一步的思考过程和动作都会实时显示
+
+### 🧠 双模型协作模式
+
+双模型模式通过**决策大模型**和**视觉小模型**的协作，实现更强大的任务执行能力：
+
+#### 工作模式选择
+
+在设备面板上，可以选择三种双模型工作模式��
+
+**1. 🚀 TURBO 模式（推荐，性能最优）**
+- **特点**：一次性生成完整操作序列，批量执行
+- **优势**：
+  - 大模型调用次数最少，API 成本最低
+  - 执行速度最快，适合可预测的常规任务
+  - 自动异常检测和恢复，遇到问题自动重新规划
+- **适用场景**：订外卖、打车、应用内导航等流程明确的任务
+- **示例**：`"打开微信给张三发消息说我到了"`
+
+**2. 🎯 DEEP 模式（深度思考）**
+- **特点**：每步都详细分析，决策最智能
+- **优势**：
+  - 处理复杂任务能力强
+  - 每步都有完整的思考过程
+  - 异常处理更全面
+- **适用场景**：需要智能决策的复杂任务
+- **示例**：`"在小红书上找5个关于健身的帖子并评论"`
+
+**3. ⚡ FAST 模式（快速响应）**
+- **特点**：简化提示词，快速决策
+- **优势**：
+  - 响应速度快
+  - 适合简单任务
+- **适用场景**：简单操作、明确指令
+- **示例**：`"打开美团"`
+
+#### 双模型配置
+
+**决策大模型配置**（需要较高智能的模型）：
+- **推荐模型**：GLM-4.7、GPT-4、Claude 等
+- **智谱 BigModel**：
+  - Base URL: `https://open.bigmodel.cn/api/paas/v4`
+  - Model: `glm-4.7`
+  - API Key: 你的智谱 API Key
+
+**视觉小模型配置**（需要视觉能力的模型）：
+- **推荐模型**：AutoGLM-Phone-9B
+- **智谱 BigModel**：
+  - Base URL: `https://open.bigmodel.cn/api/paas/v4`
+  - Model: `autoglm-phone`
+  - API Key: 你的智谱 API Key
+
+
+假设一个任务需要 10 步操作：
+
+| 模式 | 大模型调用次数 | 说明 |
+|-----|--------------|------|
+| TURBO | 1-2 次 | 1次规划 + 异常时1次重新规划 |
+| DEEP | 10 次 | 每步都调用大模型决策 |
+| FAST | 10 次 | 每步都调用大模型（简化版） |
+
+**结论**：TURBO 模式可节省 **80-90%** 的大模型 API 成本
 
 ### 手动控制模式
 
