@@ -326,9 +326,6 @@ class ConfigResponse(BaseModel):
     decision_model_name: str = ""
     decision_api_key: str = ""
 
-    # 思考模式
-    thinking_mode: str = "deep"  # "fast" | "deep"
-
     conflicts: list[dict] | None = None  # 配置冲突信息（可选）
 
 
@@ -344,9 +341,6 @@ class ConfigSaveRequest(BaseModel):
     decision_base_url: str | None = None
     decision_model_name: str | None = None
     decision_api_key: str | None = None
-
-    # 思考模式
-    thinking_mode: str | None = None  # "fast" | "deep"
 
     @field_validator("base_url")
     @classmethod
@@ -366,16 +360,6 @@ class ConfigSaveRequest(BaseModel):
         if not v or not v.strip():
             raise ValueError("model_name cannot be empty")
         return v.strip()
-
-    @field_validator("thinking_mode")
-    @classmethod
-    def validate_thinking_mode(cls, v: str | None) -> str | None:
-        """验证 thinking_mode."""
-        if v is None:
-            return v
-        if v not in ("fast", "deep"):
-            raise ValueError("thinking_mode must be 'fast' or 'deep'")
-        return v
 
     @field_validator("decision_base_url")
     @classmethod

@@ -460,7 +460,6 @@ def get_config_endpoint() -> ConfigResponse:
         decision_api_key=effective_config.decision_api_key
         if effective_config.decision_api_key
         else "",
-        thinking_mode=effective_config.thinking_mode,
         conflicts=[
             {
                 "field": c.field,
@@ -497,7 +496,6 @@ def save_config_endpoint(request: ConfigSaveRequest) -> dict:
             decision_base_url=request.decision_base_url,
             decision_model_name=request.decision_model_name,
             decision_api_key=request.decision_api_key,
-            thinking_mode=request.thinking_mode,
             merge_mode=True,
         )
 

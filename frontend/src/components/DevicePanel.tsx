@@ -16,9 +16,9 @@ import {
   History,
   ListChecks,
   Square,
-  Brain,
   Zap,
   Target,
+  Rocket,
 } from 'lucide-react';
 import { throttle } from 'lodash';
 import { ScrcpyPlayer } from './ScrcpyPlayer';
@@ -102,8 +102,9 @@ interface DevicePanelProps {
   config: GlobalConfig | null;
   isVisible: boolean;
   isConfigured: boolean;
-  thinkingMode?: 'fast' | 'deep'; // Per-device thinking mode
-  onThinkingModeChange?: (mode: 'fast' | 'deep') => void; // Callback to update thinking mode
+  thinkingMode?: 'fast' | 'deep' | 'turbo'; // Per-device thinking mode
+  onThinkingModeChange?: (mode: 'fast' | 'deep' | 'turbo') => void; // Callback to update thinking mode
+  dualModelEnabled?: boolean; // Controlled by parent component
 }
 
 export function DevicePanel({
@@ -112,8 +113,9 @@ export function DevicePanel({
   deviceName,
   config,
   isConfigured,
-  thinkingMode = 'fast',
+  thinkingMode = 'deep',
   onThinkingModeChange,
+  dualModelEnabled = false,
 }: DevicePanelProps) {
   const t = useTranslation();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -136,7 +138,6 @@ export function DevicePanel({
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [showWorkflowPopover, setShowWorkflowPopover] = useState(false);
-  const [dualModelEnabled, setDualModelEnabled] = useState(false);
   const [dualModelInitialized, setDualModelInitialized] = useState(false);
   const {
     state: dualModelState,
@@ -269,10 +270,9 @@ export function DevicePanel({
     try {
       await initDualModel({
         device_id: deviceId,
-        decision_base_url:
-          config.decision_base_url || 'https://api-inference.modelscope.cn/v1',
+        decision_base_url: config.decision_base_url || '',
         decision_api_key: config.decision_api_key || '',
-        decision_model_name: config.decision_model_name || 'ZhipuAI/GLM-4.7',
+        decision_model_name: config.decision_model_name || '',
         vision_base_url: config.base_url,
         vision_api_key: config.api_key,
         vision_model_name: config.model_name,
@@ -287,15 +287,10 @@ export function DevicePanel({
     }
   }, [deviceId, config, thinkingMode]);
 
-  // Toggle dual model mode
-  const handleToggleDualModel = useCallback(async () => {
-    if (!dualModelEnabled) {
-      if (!dualModelInitialized) {
-        await handleInitDualModel();
-      }
-      setDualModelEnabled(true);
-    } else {
-      setDualModelEnabled(false);
+  // Auto-initialize dual model when enabled from parent
+  useEffect(() => {
+    if (dualModelEnabled && !dualModelInitialized) {
+      handleInitDualModel();
     }
   }, [dualModelEnabled, dualModelInitialized, handleInitDualModel]);
 
@@ -1096,38 +1091,6 @@ export function DevicePanel({
               </Badge>
             )}
 
-            {/* Dual Model Toggle */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant={dualModelEnabled ? 'default' : 'ghost'}
-                  size="icon"
-                  onClick={handleToggleDualModel}
-                  className={`h-8 w-8 rounded-full ${
-                    dualModelEnabled
-                      ? 'bg-purple-500 hover:bg-purple-600 text-white'
-                      : 'text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
-                  }`}
-                >
-                  <Brain className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={8} className="max-w-xs">
-                <div className="space-y-1">
-                  <p className="font-medium">
-                    {dualModelEnabled
-                      ? t.devicePanel.tooltips.disableDualModel
-                      : t.devicePanel.tooltips.enableDualModel}
-                  </p>
-                  <p className="text-xs opacity-80">
-                    {dualModelEnabled
-                      ? t.devicePanel.tooltips.disableDualModelDesc
-                      : t.devicePanel.tooltips.enableDualModelDesc}
-                  </p>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-
             {/* Thinking Mode Toggle - visible when dual model is enabled */}
             {dualModelEnabled && onThinkingModeChange && (
               <>
@@ -1191,6 +1154,36 @@ export function DevicePanel({
                     </div>
                   </TooltipContent>
                 </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={thinkingMode === 'turbo' ? 'default' : 'ghost'}
+                      size="icon"
+                      onClick={() => onThinkingModeChange('turbo')}
+                      className={`h-8 w-8 rounded-full ${
+                        thinkingMode === 'turbo'
+                          ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                          : 'text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300'
+                      }`}
+                    >
+                      <Rocket className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="bottom"
+                    sideOffset={8}
+                    className="max-w-xs"
+                  >
+                    <div className="space-y-1">
+                      <p className="font-medium">
+                        {t.devicePanel.tooltips.turboMode}
+                      </p>
+                      <p className="text-xs opacity-80">
+                        {t.devicePanel.tooltips.turboModeDesc}
+                      </p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               </>
             )}
 
@@ -1213,9 +1206,7 @@ export function DevicePanel({
               state={dualModelState}
               isStreaming={loading}
               className=""
-              decisionModelName={
-                config?.decision_model_name || 'ZhipuAI/GLM-4.7'
-              }
+              decisionModelName={config?.decision_model_name || ''}
               visionModelName={config?.model_name || 'autoglm-phone'}
             />
           </div>

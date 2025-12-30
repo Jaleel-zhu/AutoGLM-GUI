@@ -24,12 +24,35 @@ import {
   Wrench,
   ChevronDown,
   ChevronUp,
+  History,
+  ListChecks,
+  Square,
 } from 'lucide-react';
-import type { ScreenshotResponse } from '../api';
-import { getScreenshot } from '../api';
+import type { ScreenshotResponse, Workflow } from '../api';
+import { getScreenshot, listWorkflows } from '../api';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  createHistoryItem,
+  saveHistoryItem,
+  loadHistoryItems,
+  clearHistory,
+  deleteHistoryItem,
+} from '../utils/history';
+import type { HistoryItem } from '../types/history';
+import { HistoryItemCard } from './HistoryItemCard';
 
 interface ChatKitPanelProps {
   deviceId: string;
+  deviceSerial: string; // Used for history storage
   deviceName: string;
   isVisible: boolean;
 }
@@ -59,6 +82,7 @@ interface Message {
 
 export function ChatKitPanel({
   deviceId,
+  deviceSerial,
   deviceName,
   isVisible,
 }: ChatKitPanelProps) {
@@ -68,9 +92,11 @@ export function ChatKitPanel({
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState('');
   const [loading, setLoading] = React.useState(false);
+  const [aborting, setAborting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const eventSourceRef = React.useRef<EventSource | null>(null);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
 
   // Screen display state
   const [useVideoStream, setUseVideoStream] = React.useState(true);
@@ -95,6 +121,14 @@ export function ChatKitPanel({
   const controlsTimeoutRef = React.useRef<number | null>(null);
   const videoStreamRef = React.useRef<{ close: () => void } | null>(null);
   const screenshotFetchingRef = React.useRef(false);
+
+  // Workflow state
+  const [workflows, setWorkflows] = React.useState<Workflow[]>([]);
+  const [showWorkflowPopover, setShowWorkflowPopover] = React.useState(false);
+
+  // History state
+  const [historyItems, setHistoryItems] = React.useState<HistoryItem[]>([]);
+  const [showHistoryPopover, setShowHistoryPopover] = React.useState(false);
 
   const showFeedback = (
     message: string,
@@ -160,6 +194,64 @@ export function ChatKitPanel({
       }
     };
   }, [deviceId]);
+
+  // Load workflows
+  React.useEffect(() => {
+    const loadWorkflows = async () => {
+      try {
+        const data = await listWorkflows();
+        setWorkflows(data.workflows);
+      } catch (error) {
+        console.error('Failed to load workflows:', error);
+      }
+    };
+    loadWorkflows();
+  }, []);
+
+  // Load history items when popover opens
+  React.useEffect(() => {
+    if (showHistoryPopover) {
+      const items = loadHistoryItems(deviceSerial);
+      setHistoryItems(items);
+    }
+  }, [showHistoryPopover, deviceSerial]);
+
+  const handleExecuteWorkflow = (workflow: Workflow) => {
+    setInput(workflow.text);
+    setShowWorkflowPopover(false);
+  };
+
+  const handleSelectHistory = (item: HistoryItem) => {
+    const userMessage: Message = {
+      id: `${item.id}-user`,
+      role: 'user',
+      content: item.taskText,
+      timestamp: item.startTime,
+    };
+    const agentMessage: Message = {
+      id: `${item.id}-agent`,
+      role: 'assistant',
+      content: item.finalMessage,
+      timestamp: item.endTime,
+      steps: [],
+      success: item.success,
+      isStreaming: false,
+    };
+    setMessages([userMessage, agentMessage]);
+    setShowHistoryPopover(false);
+  };
+
+  const handleClearHistory = () => {
+    if (confirm(t.history?.clearAllConfirm || 'Clear all history?')) {
+      clearHistory(deviceSerial);
+      setHistoryItems([]);
+    }
+  };
+
+  const handleDeleteHistoryItem = (itemId: string) => {
+    deleteHistoryItem(deviceSerial, itemId);
+    setHistoryItems(prev => prev.filter(item => item.id !== itemId));
+  };
 
   // Screenshot polling
   React.useEffect(() => {
@@ -258,6 +350,10 @@ export function ChatKitPanel({
 
     setMessages(prev => [...prev, agentMessage]);
 
+    // Create abort controller for this request
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       // Use simplified layered agent API
       const response = await fetch('/api/layered-agent/chat', {
@@ -269,6 +365,7 @@ export function ChatKitPanel({
           message: inputValue,
           device_id: deviceId,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -354,33 +451,61 @@ export function ChatKitPanel({
                 );
               } else if (data.type === 'done') {
                 // Final response
+                const updatedAgentMessage = {
+                  ...agentMessage,
+                  content: data.content || '',
+                  isStreaming: false,
+                  success: data.success,
+                  steps: [...steps],
+                  timestamp: new Date(),
+                };
                 setMessages(prev =>
                   prev.map(msg =>
-                    msg.id === agentMessageId
-                      ? {
-                          ...msg,
-                          content: data.content || msg.content,
-                          isStreaming: false,
-                          success: data.success,
-                        }
-                      : msg
+                    msg.id === agentMessageId ? updatedAgentMessage : msg
                   )
                 );
+                // Save to history
+                const historyItem = createHistoryItem(
+                  deviceSerial,
+                  deviceName,
+                  userMessage,
+                  {
+                    content: data.content || '',
+                    timestamp: new Date(),
+                    success: data.success,
+                    steps: steps.length,
+                  }
+                );
+                saveHistoryItem(deviceSerial, historyItem);
               } else if (data.type === 'error') {
                 // Error
+                const updatedAgentMessage = {
+                  ...agentMessage,
+                  content: `错误: ${data.message}`,
+                  isStreaming: false,
+                  success: false,
+                  steps: [...steps],
+                  timestamp: new Date(),
+                };
                 setMessages(prev =>
                   prev.map(msg =>
-                    msg.id === agentMessageId
-                      ? {
-                          ...msg,
-                          content: `错误: ${data.message}`,
-                          isStreaming: false,
-                          success: false,
-                        }
-                      : msg
+                    msg.id === agentMessageId ? updatedAgentMessage : msg
                   )
                 );
                 setError(data.message);
+                // Save failed task to history
+                const historyItem = createHistoryItem(
+                  deviceSerial,
+                  deviceName,
+                  userMessage,
+                  {
+                    content: `错误: ${data.message}`,
+                    timestamp: new Date(),
+                    success: false,
+                    steps: steps.length,
+                  }
+                );
+                saveHistoryItem(deviceSerial, historyItem);
               }
             } catch (e) {
               console.error('Failed to parse SSE data:', e, line);
@@ -398,26 +523,96 @@ export function ChatKitPanel({
         )
       );
     } catch (err) {
+      // Handle abort error silently (user initiated)
+      if (err instanceof Error && err.name === 'AbortError') {
+        console.log('Chat aborted by user');
+        return;
+      }
+
       console.error('Chat error:', err);
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setError(errorMessage);
       setMessages(prev =>
         prev.map(msg =>
           msg.id === agentMessageId
             ? {
                 ...msg,
-                content: `错误: ${err instanceof Error ? err.message : 'Unknown error'}`,
+                content: `错误: ${errorMessage}`,
                 isStreaming: false,
                 success: false,
               }
             : msg
         )
       );
+      // Save failed task to history
+      const historyItem = createHistoryItem(
+        deviceSerial,
+        deviceName,
+        userMessage,
+        {
+          content: `错误: ${errorMessage}`,
+          timestamp: new Date(),
+          success: false,
+          steps: 0,
+        }
+      );
+      saveHistoryItem(deviceSerial, historyItem);
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
-  }, [input, loading, deviceId]);
+  }, [input, loading, deviceId, deviceSerial, deviceName]);
+
+  // Abort chat function
+  const handleAbort = React.useCallback(() => {
+    if (!abortControllerRef.current) return;
+
+    setAborting(true);
+
+    try {
+      // Abort the fetch request
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+
+      // Update UI - set isStreaming to false
+      setMessages(prev => {
+        const lastMessage = prev[prev.length - 1];
+        if (
+          lastMessage &&
+          lastMessage.role === 'assistant' &&
+          lastMessage.isStreaming
+        ) {
+          return prev.map((msg, index) =>
+            index === prev.length - 1
+              ? {
+                  ...msg,
+                  content: msg.content || t.chat?.aborted || '任务已中断',
+                  isStreaming: false,
+                  success: false,
+                }
+              : msg
+          );
+        }
+        return prev;
+      });
+
+      // Show feedback
+      showFeedback(t.chat?.aborted || '任务已中断', 2000, 'success');
+    } catch (error) {
+      console.error('Failed to abort chat:', error);
+      showFeedback(t.chat?.abortFailed || '中断失败', 2000, 'error');
+    } finally {
+      setLoading(false);
+      setAborting(false);
+    }
+  }, [t]);
 
   const handleReset = React.useCallback(() => {
+    // Abort any ongoing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
     setMessages([]);
     setError(null);
     if (eventSourceRef.current) {
@@ -459,8 +654,70 @@ export function ChatKitPanel({
               variant="secondary"
               className="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300"
             >
-              GLM-4.7 + Phone
+              {t.chatkit?.layeredAgent || '分层代理模式'}
             </Badge>
+            {/* History button with Popover */}
+            <Popover
+              open={showHistoryPopover}
+              onOpenChange={setShowHistoryPopover}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+                  title={t.history?.title || 'History'}
+                >
+                  <History className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+
+              <PopoverContent className="w-96 p-0" align="end" sideOffset={8}>
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
+                  <h3 className="font-semibold text-sm text-slate-900 dark:text-slate-100">
+                    {t.history?.title || 'History'}
+                  </h3>
+                  {historyItems.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleClearHistory}
+                      className="h-7 text-xs"
+                    >
+                      {t.history?.clearAll || 'Clear All'}
+                    </Button>
+                  )}
+                </div>
+
+                {/* Scrollable content */}
+                <ScrollArea className="h-[400px]">
+                  <div className="p-4 space-y-2">
+                    {historyItems.length > 0 ? (
+                      historyItems.map(item => (
+                        <HistoryItemCard
+                          key={item.id}
+                          item={item}
+                          onSelect={handleSelectHistory}
+                          onDelete={handleDeleteHistoryItem}
+                        />
+                      ))
+                    ) : (
+                      <div className="text-center py-8">
+                        <History className="h-12 w-12 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                          {t.history?.noHistory || 'No history yet'}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                          {t.history?.noHistoryDescription ||
+                            'Your completed tasks will appear here'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
+              </PopoverContent>
+            </Popover>
             <Button
               variant="ghost"
               size="icon"
@@ -493,8 +750,8 @@ export function ChatKitPanel({
                   {t.chatkit?.title || '分层代理模式'}
                 </p>
                 <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-xs">
-                  GLM-4.7 负责规划任务，autoglm-phone
-                  负责执行。你可以看到每一步的执行过程。
+                  {t.chatkit?.layeredAgentDesc ||
+                    '决策模型负责规划任务，视觉模型负责执行。你可以看到每一步的执行过程。'}
                 </p>
               </div>
             ) : (
@@ -670,18 +927,106 @@ export function ChatKitPanel({
               className="flex-1 min-h-[40px] max-h-[120px] resize-none"
               rows={1}
             />
-            <Button
-              onClick={handleSend}
-              disabled={!input.trim() || loading}
-              size="icon"
-              className="h-10 w-10 rounded-full flex-shrink-0 bg-purple-600 hover:bg-purple-700"
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
+            {/* Workflow Quick Run Button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Popover
+                  open={showWorkflowPopover}
+                  onOpenChange={setShowWorkflowPopover}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-10 w-10 flex-shrink-0"
+                    >
+                      <ListChecks className="w-4 h-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-72 p-3">
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-sm">
+                        {t.workflows?.selectWorkflow || 'Select Workflow'}
+                      </h4>
+                      {workflows.length === 0 ? (
+                        <div className="text-sm text-slate-500 dark:text-slate-400 space-y-1">
+                          <p>{t.workflows?.empty || 'No workflows yet'}</p>
+                          <p>
+                            前往{' '}
+                            <a
+                              href="/workflows"
+                              className="text-primary underline"
+                            >
+                              工作流
+                            </a>{' '}
+                            页面创建。
+                          </p>
+                        </div>
+                      ) : (
+                        <ScrollArea className="h-64">
+                          <div className="space-y-1">
+                            {workflows.map(workflow => (
+                              <button
+                                key={workflow.uuid}
+                                onClick={() => handleExecuteWorkflow(workflow)}
+                                className="w-full text-left p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                              >
+                                <div className="font-medium text-sm">
+                                  {workflow.name}
+                                </div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                                  {workflow.text}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={8} className="max-w-xs">
+                <div className="space-y-1">
+                  <p className="font-medium">
+                    {t.devicePanel?.tooltips?.workflowButton ||
+                      'Quick Workflow'}
+                  </p>
+                  <p className="text-xs opacity-80">
+                    {t.devicePanel?.tooltips?.workflowButtonDesc ||
+                      'Select a workflow to quickly fill in the task'}
+                  </p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+            {/* Abort Button - shown when loading */}
+            {loading && (
+              <Button
+                onClick={handleAbort}
+                disabled={aborting}
+                size="icon"
+                variant="destructive"
+                className="h-10 w-10 rounded-full flex-shrink-0"
+                title={t.chat?.abortChat || '中断任务'}
+              >
+                {aborting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Square className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+            {/* Send Button */}
+            {!loading && (
+              <Button
+                onClick={handleSend}
+                disabled={!input.trim()}
+                size="icon"
+                className="h-10 w-10 rounded-full flex-shrink-0 bg-purple-600 hover:bg-purple-700"
+              >
                 <Send className="h-4 w-4" />
-              )}
-            </Button>
+              </Button>
+            )}
           </div>
         </div>
       </Card>

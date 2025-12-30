@@ -21,9 +21,9 @@ class ThinkingMode(str, Enum):
 class DecisionModelConfig(BaseModel):
     """决策大模型配置"""
 
-    base_url: str = "https://api-inference.modelscope.cn/v1"
+    base_url: str
     api_key: str = ""
-    model_name: str = "ZhipuAI/GLM-4.7"
+    model_name: str
     max_tokens: int = 4096
     temperature: float = 0.7
     thinking_mode: ThinkingMode = ThinkingMode.DEEP
@@ -33,7 +33,7 @@ class DualModelConfig(BaseModel):
     """双模型协作配置"""
 
     enabled: bool = False
-    decision_model: DecisionModelConfig = DecisionModelConfig()
+    decision_model: Optional[DecisionModelConfig] = None
 
 
 class ModelRole(str, Enum):

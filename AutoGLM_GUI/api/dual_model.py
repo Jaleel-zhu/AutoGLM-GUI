@@ -30,19 +30,17 @@ class DualModelInitRequest(BaseModel):
     device_id: str
 
     # 决策大模型配置
-    decision_base_url: str = "https://api-inference.modelscope.cn/v1"
+    decision_base_url: str
     decision_api_key: str
-    decision_model_name: str = "ZhipuAI/GLM-4.7"
+    decision_model_name: str
 
     # 视觉小模型配置(复用现有配置)
     vision_base_url: Optional[str] = None
     vision_api_key: Optional[str] = None
     vision_model_name: Optional[str] = None
 
-    # 思考模式: fast 或 deep
-    thinking_mode: str = "deep"
-
     max_steps: int = 50
+    thinking_mode: str = "deep"  # fast, deep, turbo
 
 
 class DualModelChatRequest(BaseModel):
@@ -73,9 +71,12 @@ def init_dual_model(request: DualModelInitRequest) -> dict:
     from AutoGLM_GUI.phone_agent_manager import PhoneAgentManager
 
     device_id = request.device_id
-    thinking_mode = (
-        ThinkingMode.FAST if request.thinking_mode == "fast" else ThinkingMode.DEEP
-    )
+    thinking_mode_map = {
+        "fast": ThinkingMode.FAST,
+        "deep": ThinkingMode.DEEP,
+        "turbo": ThinkingMode.TURBO,
+    }
+    thinking_mode = thinking_mode_map.get(request.thinking_mode, ThinkingMode.DEEP)
     logger.info(f"初始化双模型Agent: {device_id}, 模式: {thinking_mode.value}")
 
     # 检查设备是否已有单模型Agent初始化

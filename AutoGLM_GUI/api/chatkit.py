@@ -1,7 +1,7 @@
 """Layered agent API for hierarchical task execution.
 
 This module provides the layered agent API endpoint that uses
-GLM-4.7 for planning and autoglm-phone for execution.
+a decision model for planning and autoglm-phone for execution.
 """
 
 import json
@@ -19,9 +19,12 @@ from AutoGLM_GUI.logger import logger
 
 router = APIRouter()
 
-# ==================== 配置 ====================
 
-PLANNER_MODEL = "glm-4.7"  # 规划层使用的模型（使用支持工具调用的模型）
+def get_planner_model() -> str:
+    """获取规划层使用的模型名称，从配置读取."""
+    config = config_manager.get_effective_config()
+    return config.decision_model_name or "glm-4.7"
+
 
 PLANNER_INSTRUCTIONS = """## 核心目标
 你是一个负责操控手机的高级智能中枢。你的任务是将用户的意图转化为**视觉模型（Vision Model）**可以执行的原子操作。
@@ -238,8 +241,9 @@ def _setup_openai_client() -> AsyncOpenAI:
     if not effective_config.base_url:
         raise ValueError("base_url not configured")
 
+    planner_model = get_planner_model()
     logger.info(f"[LayeredAgent] API Base URL: {effective_config.base_url}")
-    logger.info(f"[LayeredAgent] Planner Model: {PLANNER_MODEL}")
+    logger.info(f"[LayeredAgent] Planner Model: {planner_model}")
 
     return AsyncOpenAI(
         base_url=effective_config.base_url,
@@ -249,8 +253,9 @@ def _setup_openai_client() -> AsyncOpenAI:
 
 def _create_planner_agent(client: AsyncOpenAI) -> Agent[Any]:
     """创建规划 Agent，使用 Chat Completions API"""
+    planner_model = get_planner_model()
     model = OpenAIChatCompletionsModel(
-        model=PLANNER_MODEL,
+        model=planner_model,
         openai_client=client,
     )
 
@@ -291,7 +296,7 @@ async def layered_agent_chat(request: LayeredAgentRequest):
     """
     Layered agent chat API with streaming execution steps.
 
-    Uses GLM-4.7 for planning and autoglm-phone for execution.
+    Uses a decision model for planning and autoglm-phone for execution.
 
     Returns SSE stream with events:
     - tool_call: Agent is calling a tool (with tool_name and tool_args)

@@ -54,12 +54,9 @@ class ConfigModel(BaseModel):
 
     # 双模型配置
     dual_model_enabled: bool = False
-    decision_base_url: str = "https://api-inference.modelscope.cn/v1"
-    decision_model_name: str = "ZhipuAI/GLM-4.7"
+    decision_base_url: str = ""
+    decision_model_name: str = ""
     decision_api_key: str = ""
-
-    # 思考模式配置
-    thinking_mode: str = "deep"  # "fast" 或 "deep"
 
     @field_validator("base_url")
     @classmethod
@@ -85,14 +82,6 @@ class ConfigModel(BaseModel):
             raise ValueError("decision_base_url must start with http:// or https://")
         return v.rstrip("/")  # 去除尾部斜杠
 
-    @field_validator("thinking_mode")
-    @classmethod
-    def validate_thinking_mode(cls, v: str) -> str:
-        """验证思考模式."""
-        if v not in ("fast", "deep"):
-            raise ValueError("thinking_mode must be 'fast' or 'deep'")
-        return v
-
 
 # ==================== 配置层数据类 ====================
 
@@ -109,8 +98,6 @@ class ConfigLayer:
     decision_base_url: Optional[str] = None
     decision_model_name: Optional[str] = None
     decision_api_key: Optional[str] = None
-    # 思考模式配置
-    thinking_mode: Optional[str] = None
 
     source: ConfigSource = ConfigSource.DEFAULT
 
@@ -142,7 +129,6 @@ class ConfigLayer:
                 "decision_base_url": self.decision_base_url,
                 "decision_model_name": self.decision_model_name,
                 "decision_api_key": self.decision_api_key,
-                "thinking_mode": self.thinking_mode,
             }.items()
             if v is not None
         }
@@ -314,7 +300,6 @@ class UnifiedConfigManager:
                 decision_base_url=config_data.get("decision_base_url"),
                 decision_model_name=config_data.get("decision_model_name"),
                 decision_api_key=config_data.get("decision_api_key"),
-                thinking_mode=config_data.get("thinking_mode"),
                 source=ConfigSource.FILE,
             )
             self._effective_config = None  # 清除缓存
@@ -346,7 +331,6 @@ class UnifiedConfigManager:
         decision_base_url: Optional[str] = None,
         decision_model_name: Optional[str] = None,
         decision_api_key: Optional[str] = None,
-        thinking_mode: Optional[str] = None,
         merge_mode: bool = True,
     ) -> bool:
         """
@@ -360,7 +344,6 @@ class UnifiedConfigManager:
             decision_base_url: 决策模型 Base URL
             decision_model_name: 决策模型名称
             decision_api_key: 决策模型 API key
-            thinking_mode: 思考模式 (fast/deep)
             merge_mode: 是否合并现有配置（True: 保留未提供的字段）
 
         Returns:
@@ -386,8 +369,6 @@ class UnifiedConfigManager:
                 new_config["decision_model_name"] = decision_model_name
             if decision_api_key:
                 new_config["decision_api_key"] = decision_api_key
-            if thinking_mode:
-                new_config["thinking_mode"] = thinking_mode
 
             # 合并模式：保留现有文件中未提供的字段
             if merge_mode and self._config_path.exists():
@@ -402,7 +383,6 @@ class UnifiedConfigManager:
                         "decision_base_url",
                         "decision_model_name",
                         "decision_api_key",
-                        "thinking_mode",
                     ]
                     for key in preserve_keys:
                         if key not in new_config and key in existing:
@@ -491,7 +471,6 @@ class UnifiedConfigManager:
             "decision_base_url",
             "decision_model_name",
             "decision_api_key",
-            "thinking_mode",
         ]
 
         for key in config_keys:
@@ -658,7 +637,6 @@ class UnifiedConfigManager:
             "decision_base_url": config.decision_base_url,
             "decision_model_name": config.decision_model_name,
             "decision_api_key": config.decision_api_key,
-            "thinking_mode": config.thinking_mode,
         }
 
 

@@ -530,8 +530,6 @@ export interface ConfigResponse {
   decision_base_url: string;
   decision_model_name: string;
   decision_api_key: string;
-  // 思考模式
-  thinking_mode: string; // "fast" | "deep"
 }
 
 export interface ConfigSaveRequest {
@@ -543,8 +541,6 @@ export interface ConfigSaveRequest {
   decision_base_url?: string;
   decision_model_name?: string;
   decision_api_key?: string;
-  // 思考模式
-  thinking_mode?: string;
 }
 
 export async function getConfig(): Promise<ConfigResponse> {
@@ -701,7 +697,7 @@ export interface DualModelInitRequest {
   vision_base_url?: string;
   vision_api_key?: string;
   vision_model_name?: string;
-  thinking_mode?: 'fast' | 'deep';
+  thinking_mode?: 'fast' | 'deep' | 'turbo';
   max_steps?: number;
 }
 
