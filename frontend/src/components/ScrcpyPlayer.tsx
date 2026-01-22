@@ -31,6 +31,7 @@ interface ScrcpyPlayerProps {
   onSwipeSuccess?: () => void;
   onSwipeError?: (error: string) => void;
   onStreamReady?: (stream: { close: () => void } | null) => void;
+  isVisible?: boolean; // ✅ 新增：控制重连行为
 }
 
 interface VideoMetadata {
@@ -58,6 +59,7 @@ export function ScrcpyPlayer({
   onSwipeSuccess,
   onSwipeError,
   onStreamReady,
+  isVisible = true, // ✅ 默认 true，向后兼容
 }: ScrcpyPlayerProps) {
   const socketRef = useRef<Socket | null>(null);
   const decoderRef = useRef<WebCodecsVideoDecoder | null>(null);
@@ -71,6 +73,7 @@ export function ScrcpyPlayer({
   const onFallbackRef = useRef(onFallback);
   const fallbackTimeoutRef = useRef(fallbackTimeout);
   const onStreamReadyRef = useRef(onStreamReady);
+  const isVisibleRef = useRef(isVisible); // ✅ 新增：用 ref 追踪 isVisible
 
   const [status, setStatus] = useState<
     'connecting' | 'connected' | 'error' | 'disconnected'
@@ -98,7 +101,8 @@ export function ScrcpyPlayer({
     onFallbackRef.current = onFallback;
     fallbackTimeoutRef.current = fallbackTimeout;
     onStreamReadyRef.current = onStreamReady;
-  }, [onFallback, fallbackTimeout, onStreamReady]);
+    isVisibleRef.current = isVisible; // ✅ 新增：保持 ref 同步
+  }, [onFallback, fallbackTimeout, onStreamReady, isVisible]);
 
   useEffect(() => {
     const fetchDeviceResolution = async () => {
@@ -293,45 +297,59 @@ export function ScrcpyPlayer({
     [markDataReceived]
   );
 
-  const disconnectDevice = useCallback((suppressReconnect = false) => {
-    if (suppressReconnect) {
-      suppressReconnectRef.current = true;
-    }
-    if (decoderRef.current) {
-      try {
-        decoderRef.current.dispose();
-      } catch (error) {
-        console.error('[ScrcpyPlayer] Failed to dispose decoder:', error);
+  const disconnectDevice = useCallback(
+    (suppressReconnect = false) => {
+      console.log(`[ScrcpyPlayer] [${deviceId}] Disconnecting...`, {
+        suppressReconnect,
+        isVisible: isVisibleRef.current,
+        socketConnected: socketRef.current?.connected,
+      }); // ✅ 方案 3：断开日志
+
+      if (suppressReconnect) {
+        suppressReconnectRef.current = true;
       }
-      decoderRef.current = null;
-    }
+      if (decoderRef.current) {
+        try {
+          decoderRef.current.dispose();
+        } catch (error) {
+          console.error('[ScrcpyPlayer] Failed to dispose decoder:', error);
+        }
+        decoderRef.current = null;
+      }
 
-    // Just clear the reference, let React handle DOM cleanup
-    canvasRef.current = null;
+      // Just clear the reference, let React handle DOM cleanup
+      canvasRef.current = null;
 
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
 
-    onStreamReadyRef.current?.(null);
+      onStreamReadyRef.current?.(null);
 
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
 
-    if (fallbackTimerRef.current) {
-      clearTimeout(fallbackTimerRef.current);
-      fallbackTimerRef.current = null;
-    }
+      if (fallbackTimerRef.current) {
+        clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = null;
+      }
 
-    setStatus('disconnected');
-    setScreenInfo(null);
-    setErrorMessage(null);
-  }, []);
+      setStatus('disconnected');
+      setScreenInfo(null);
+      setErrorMessage(null);
+    },
+    [deviceId]
+  );
 
   const connectDevice = useCallback(() => {
+    console.log(`[ScrcpyPlayer] [${deviceId}] Connecting...`, {
+      isVisible: isVisibleRef.current,
+      suppressReconnect: suppressReconnectRef.current,
+    }); // ✅ 方案 3：连接日志
+
     disconnectDevice(true);
     hasReceivedDataRef.current = false;
     setStatus('connecting');
@@ -345,6 +363,9 @@ export function ScrcpyPlayer({
     socketRef.current = socket;
 
     socket.on('connect', () => {
+      console.log(
+        `[ScrcpyPlayer] [${deviceId}] Socket connected, emitting connect-device`
+      ); // ✅ 方案 3
       socket.emit('connect-device', {
         device_id: deviceId,
         maxSize: 1280,
@@ -399,7 +420,11 @@ export function ScrcpyPlayer({
     });
 
     socket.on('error', (error: { message?: string }) => {
-      console.error('[ScrcpyPlayer] Socket error:', error);
+      console.error(`[ScrcpyPlayer] [${deviceId}] Socket error:`, error, {
+        suppressReconnect: suppressReconnectRef.current,
+        isVisible: isVisibleRef.current,
+      }); // ✅ 方案 3：错误日志
+
       setStatus('error');
       setErrorMessage(error?.message || 'Socket error');
 
@@ -407,9 +432,21 @@ export function ScrcpyPlayer({
         return;
       }
 
+      // ✅ 方案 1：检查 isVisible，隐藏时不重连
+      if (!isVisibleRef.current) {
+        console.log(
+          `[ScrcpyPlayer] [${deviceId}] Skipping reconnect on error (not visible)`
+        );
+        onStreamReadyRef.current?.(null);
+        return;
+      }
+
       onStreamReadyRef.current?.(null);
 
       if (!reconnectTimerRef.current) {
+        console.log(
+          `[ScrcpyPlayer] [${deviceId}] Scheduling reconnect after error in 3s`
+        ); // ✅ 方案 3
         reconnectTimerRef.current = setTimeout(() => {
           reconnectTimerRef.current = null;
           connectDeviceRef.current?.();
@@ -418,8 +455,24 @@ export function ScrcpyPlayer({
     });
 
     socket.on('disconnect', () => {
+      console.log(`[ScrcpyPlayer] [${deviceId}] Socket disconnected`, {
+        suppressReconnect: suppressReconnectRef.current,
+        isVisible: isVisibleRef.current,
+        reconnectTimerActive: !!reconnectTimerRef.current,
+      }); // ✅ 方案 3：断连日志
+
       if (suppressReconnectRef.current) {
         suppressReconnectRef.current = false;
+        return;
+      }
+
+      // ✅ 方案 1：检查 isVisible，隐藏时不重连
+      if (!isVisibleRef.current) {
+        console.log(
+          `[ScrcpyPlayer] [${deviceId}] Skipping reconnect (not visible)`
+        );
+        setStatus('disconnected');
+        onStreamReadyRef.current?.(null);
         return;
       }
 
@@ -427,7 +480,9 @@ export function ScrcpyPlayer({
       onStreamReadyRef.current?.(null);
 
       if (!reconnectTimerRef.current) {
+        console.log(`[ScrcpyPlayer] [${deviceId}] Scheduling reconnect in 3s`); // ✅ 方案 3
         reconnectTimerRef.current = setTimeout(() => {
+          console.log(`[ScrcpyPlayer] [${deviceId}] Reconnecting now`); // ✅ 方案 3
           reconnectTimerRef.current = null;
           connectDeviceRef.current?.();
         }, 3000);
@@ -459,6 +514,32 @@ export function ScrcpyPlayer({
       disconnectDevice(true);
     };
   }, [connectDevice, disconnectDevice]);
+
+  // ✅ 方案 1：响应 isVisible 变化
+  useEffect(() => {
+    if (!isVisible && socketRef.current?.connected) {
+      console.log(
+        `[ScrcpyPlayer] [${deviceId}] Component hidden, disconnecting stream`
+      );
+      // Use queueMicrotask to avoid synchronous setState within effect
+      queueMicrotask(() => {
+        disconnectDevice(true); // 抑制重连
+      });
+    } else if (
+      isVisible &&
+      status === 'disconnected' &&
+      !socketRef.current?.connected
+    ) {
+      console.log(
+        `[ScrcpyPlayer] [${deviceId}] Component visible again, reconnecting`
+      );
+      // 小延迟避免快速重连
+      const timer = setTimeout(() => {
+        connectDevice();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible, status, deviceId, disconnectDevice, connectDevice]);
 
   const getStreamDimensions = () => {
     if (screenInfo) {
