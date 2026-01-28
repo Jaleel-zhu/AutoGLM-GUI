@@ -37,16 +37,15 @@ def build_frontend() -> bool:
     """Build the frontend using pnpm."""
     print("Building frontend...")
 
-    # Check if pnpm is available
-    try:
-        subprocess.run(["pnpm", "--version"], check=True, capture_output=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    # Resolve pnpm executable
+    pnpm_exe = shutil.which("pnpm")
+    if not pnpm_exe:
         print("Error: pnpm is not installed. Please install pnpm first.")
         return False
 
     # Install dependencies
     print("Installing frontend dependencies...")
-    result = subprocess.run(["pnpm", "install"], cwd=FRONTEND_DIR)
+    result = subprocess.run([pnpm_exe, "install"], cwd=FRONTEND_DIR)
     if result.returncode != 0:
         print("Error: Failed to install frontend dependencies.")
         return False
@@ -56,7 +55,7 @@ def build_frontend() -> bool:
     env = os.environ.copy()
     env["VITE_BACKEND_VERSION"] = get_backend_version()
     print(f"Frontend build version: {env['VITE_BACKEND_VERSION']}")
-    result = subprocess.run(["pnpm", "build"], cwd=FRONTEND_DIR, env=env)
+    result = subprocess.run([pnpm_exe, "build"], cwd=FRONTEND_DIR, env=env)
     if result.returncode != 0:
         print("Error: Failed to build frontend.")
         return False
