@@ -19,13 +19,16 @@ def _task_to_response(task) -> ScheduledTaskResponse:
         id=task.id,
         name=task.name,
         workflow_uuid=task.workflow_uuid,
-        device_serialno=task.device_serialno,
+        device_serialnos=task.device_serialnos,
         cron_expression=task.cron_expression,
         enabled=task.enabled,
         created_at=task.created_at.isoformat(),
         updated_at=task.updated_at.isoformat(),
         last_run_time=task.last_run_time.isoformat() if task.last_run_time else None,
         last_run_success=task.last_run_success,
+        last_run_status=task.last_run_status,
+        last_run_success_count=task.last_run_success_count,
+        last_run_total_count=task.last_run_total_count,
         last_run_message=task.last_run_message,
         next_run_time=next_run.isoformat() if next_run else None,
     )
@@ -48,7 +51,7 @@ def create_scheduled_task(request: ScheduledTaskCreate) -> ScheduledTaskResponse
     task = scheduler_manager.create_task(
         name=request.name,
         workflow_uuid=request.workflow_uuid,
-        device_serialno=request.device_serialno,
+        device_serialnos=request.device_serialnos,
         cron_expression=request.cron_expression,
         enabled=request.enabled,
     )

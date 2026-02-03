@@ -765,7 +765,7 @@ class ScheduledTaskCreate(BaseModel):
 
     name: str
     workflow_uuid: str
-    device_serialno: str
+    device_serialnos: list[str]
     cron_expression: str
     enabled: bool = True
 
@@ -775,6 +775,22 @@ class ScheduledTaskCreate(BaseModel):
         if not v or not v.strip():
             raise ValueError("name cannot be empty")
         return v.strip()
+
+    @field_validator("device_serialnos")
+    @classmethod
+    def validate_devices(cls, v: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in v or []:
+            s = raw.strip()
+            if not s or s in seen:
+                continue
+            normalized.append(s)
+            seen.add(s)
+
+        if len(normalized) == 0:
+            raise ValueError("at least one device must be selected")
+        return normalized
 
     @field_validator("cron_expression")
     @classmethod
@@ -794,9 +810,28 @@ class ScheduledTaskUpdate(BaseModel):
 
     name: str | None = None
     workflow_uuid: str | None = None
-    device_serialno: str | None = None
+    device_serialnos: list[str] | None = None
     cron_expression: str | None = None
     enabled: bool | None = None
+
+    @field_validator("device_serialnos")
+    @classmethod
+    def validate_devices(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return None
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for raw in v:
+            s = raw.strip()
+            if not s or s in seen:
+                continue
+            normalized.append(s)
+            seen.add(s)
+
+        if len(normalized) == 0:
+            raise ValueError("at least one device must be selected")
+        return normalized
 
     @field_validator("cron_expression")
     @classmethod
@@ -819,13 +854,16 @@ class ScheduledTaskResponse(BaseModel):
     id: str
     name: str
     workflow_uuid: str
-    device_serialno: str
+    device_serialnos: list[str]
     cron_expression: str
     enabled: bool
     created_at: str
     updated_at: str
     last_run_time: str | None
     last_run_success: bool | None
+    last_run_status: str | None = None
+    last_run_success_count: int | None = None
+    last_run_total_count: int | None = None
     last_run_message: str | None
     next_run_time: str | None = None
 
