@@ -11,6 +11,7 @@ Usage:
     uv run python scripts/release.py --minor      # Bump minor version (0.1.3 -> 0.2.0)
     uv run python scripts/release.py --major      # Bump major version (0.1.3 -> 1.0.0)
     uv run python scripts/release.py --version 1.2.3  # Set specific version
+    uv run python scripts/release.py --no-readme  # Skip updating README.md download links
 """
 
 import argparse
@@ -187,29 +188,29 @@ def update_readme_download_links(new_version: str) -> bool:
         return False
 
 
-def git_commit_version(version: str, dry_run: bool = False) -> bool:
+def git_commit_version(
+    version: str, dry_run: bool = False, skip_readme: bool = False
+) -> bool:
     """Commit version bumps in pyproject.toml, electron/package.json, and README.md."""
     print("Committing version bump to git...")
 
+    files_to_add = [
+        "pyproject.toml",
+        "electron/package.json",
+        "uv.lock",
+    ]
+    if not skip_readme:
+        files_to_add.append("README.md")
+
     if dry_run:
-        print(
-            "[DRY RUN] Would run: git add pyproject.toml electron/package.json README.md"
-        )
+        print(f"[DRY RUN] Would run: git add {' '.join(files_to_add)}")
         print(f'[DRY RUN] Would run: git commit -m "release v{version}"')
         return True
 
     try:
-        # Stage pyproject.toml, electron/package.json, and README.md
+        # Stage files
         result = subprocess.run(
-            [
-                "git",
-                "add",
-                "pyproject.toml",
-                "electron/package.json",
-                "electron/package-lock.json",
-                "README.md",
-                "uv.lock",
-            ],
+            ["git", "add"] + files_to_add,
             cwd=ROOT_DIR,
             capture_output=True,
             text=True,
@@ -316,6 +317,11 @@ def main() -> int:
         action="store_true",
         help="Show what would be done without making changes",
     )
+    parser.add_argument(
+        "--no-readme",
+        action="store_true",
+        help="Skip updating README.md download links",
+    )
 
     args = parser.parse_args()
 
@@ -351,8 +357,11 @@ def main() -> int:
             return 1
 
         # Update README.md download links
-        if not update_readme_download_links(new_version):
-            return 1
+        if not args.no_readme:
+            if not update_readme_download_links(new_version):
+                return 1
+        else:
+            print("Skipping README.md update (--no-readme)")
         print()
 
     ## run uv sync
@@ -360,7 +369,9 @@ def main() -> int:
         if not run_uv_sync():
             return 1
 
-    if not git_commit_version(new_version, dry_run=args.dry_run):
+    if not git_commit_version(
+        new_version, dry_run=args.dry_run, skip_readme=args.no_readme
+    ):
         return 1
     print()
 
