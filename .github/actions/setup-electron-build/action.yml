@@ -9,7 +9,7 @@ inputs:
   node-version:
     description: Node.js version to use
     required: false
-    default: "20"
+    default: "22"
   pnpm-version:
     description: pnpm version to use
     required: false
@@ -56,7 +56,9 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
         cache: "pnpm"
-        cache-dependency-path: "frontend/pnpm-lock.yaml"
+        cache-dependency-path: |
+          frontend/pnpm-lock.yaml
+          electron/pnpm-lock.yaml
 
     # Verify pnpm installation - Unix
     - name: Verify pnpm (Unix)
@@ -95,6 +97,20 @@ runs:
         key: ${{ runner.os }}${{ inputs.cache-suffix && format('-{0}', inputs.cache-suffix) || '' }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
         restore-keys: |
           ${{ runner.os }}${{ inputs.cache-suffix && format('-{0}', inputs.cache-suffix) || '' }}-pnpm-store-
+
+    # Install frontend dependencies
+    - name: Install frontend dependencies
+      shell: bash
+      run: |
+        cd frontend
+        pnpm install --frozen-lockfile
+
+    # Install electron dependencies
+    - name: Install electron dependencies
+      shell: bash
+      run: |
+        cd electron
+        pnpm install --frozen-lockfile
 
     # uv cache
     - name: Cache uv
