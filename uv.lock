@@ -91,7 +91,7 @@ wheels = [
 
 [[package]]
 name = "autoglm-gui"
-version = "1.5.7"
+version = "1.5.8"
 source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
