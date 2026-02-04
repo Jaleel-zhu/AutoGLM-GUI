@@ -11,7 +11,12 @@ AutoGLM-GUI Electron 一键构建脚本
 6. 构建 Electron 应用
 
 用法：
-    uv run python scripts/build_electron.py [--skip-frontend] [--skip-adb] [--skip-backend]
+    uv run python scripts/build_electron.py [--skip-frontend] [--skip-adb] [--skip-backend] [--publish MODE]
+
+发布模式 (--publish):
+    never   - 不发布（默认，用于本地开发）
+    onTag   - 仅在 git tag 上发布（CI 推荐）
+    always  - 总是发布
 """
 
 import argparse
@@ -272,11 +277,15 @@ class ElectronBuilder:
 
         print_step("构建 Electron 应用", 7, 7)
 
-        # 构建 Electron (明确指定不发布)
-        if not run_command(
-            ["pnpm", "run", "build", "--", "--publish", "never"], cwd=self.electron_dir
-        ):
+        # 获取发布模式
+        publish_mode = self.args.publish
+        print(f"发布模式: {publish_mode}")
+
+        # 构建 Electron
+        build_cmd = ["pnpm", "run", "build", "--", "--publish", publish_mode]
+        if not run_command(build_cmd, cwd=self.electron_dir):
             if self.is_macos:
+                # macOS 上可能需要清理磁盘镜像后重试
                 run_command(
                     [
                         "bash",
@@ -289,10 +298,7 @@ class ElectronBuilder:
                     ],
                     cwd=self.root_dir,
                 )
-                if not run_command(
-                    ["pnpm", "run", "build", "--", "--publish", "never"],
-                    cwd=self.electron_dir,
-                ):
+                if not run_command(build_cmd, cwd=self.electron_dir):
                     return False
             else:
                 return False
@@ -358,6 +364,12 @@ def main():
     parser.add_argument("--skip-frontend", action="store_true", help="跳过前端构建")
     parser.add_argument("--skip-adb", action="store_true", help="跳过 ADB 工具下载")
     parser.add_argument("--skip-backend", action="store_true", help="跳过后端打包")
+    parser.add_argument(
+        "--publish",
+        choices=["never", "onTag", "always"],
+        default="never",
+        help="发布模式: never(默认), onTag(CI推荐), always",
+    )
     args = parser.parse_args()
 
     builder = ElectronBuilder(args)

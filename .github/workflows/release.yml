@@ -161,37 +161,10 @@ jobs:
       - name: Setup Electron build environment
         uses: ./.github/actions/setup-electron-build
 
-      - name: Build Electron application
-        run: uv run python scripts/build_electron.py
-
-      - name: Get version
-        id: version
-        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Find and upload macOS artifacts
-        run: |
-          # Find DMG file
-          dmg_file=$(find electron/dist -type f -name "*.dmg" ! -name "*.blockmap" | head -n 1)
-          if [ -n "$dmg_file" ]; then
-            echo "Uploading DMG: $(basename "$dmg_file")"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} "$dmg_file"
-          fi
-
-          # Find blockmap file
-          blockmap_file=$(find electron/dist -type f -name "*.dmg.blockmap" | head -n 1)
-          if [ -n "$blockmap_file" ]; then
-            echo "Uploading blockmap: $(basename "$blockmap_file")"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} "$blockmap_file"
-          fi
-
-          # Upload latest-mac.yml (auto-update metadata)
-          latest_yml=$(find electron/dist -type f -name "latest-mac.yml" | head -n 1)
-          if [ -n "$latest_yml" ]; then
-            echo "Uploading latest-mac.yml"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} "$latest_yml"
-          fi
+      - name: Build and publish Electron application
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python scripts/build_electron.py --publish onTag
 
   # Build Electron application for macOS (Intel x64)
   build-electron-macos-x64:
@@ -222,37 +195,10 @@ jobs:
         with:
           cache-suffix: "x64"
 
-      - name: Build Electron application
-        run: uv run python scripts/build_electron.py
-
-      - name: Get version
-        id: version
-        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Find and upload macOS x64 artifacts
-        run: |
-          # Find DMG file
-          dmg_file=$(find electron/dist -type f -name "*.dmg" ! -name "*.blockmap" | head -n 1)
-          if [ -n "$dmg_file" ]; then
-            echo "Uploading DMG: $(basename "$dmg_file")"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} "$dmg_file"
-          fi
-
-          # Find blockmap file
-          blockmap_file=$(find electron/dist -type f -name "*.dmg.blockmap" | head -n 1)
-          if [ -n "$blockmap_file" ]; then
-            echo "Uploading blockmap: $(basename "$blockmap_file")"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} "$blockmap_file"
-          fi
-
-          # Upload latest-mac.yml (auto-update metadata)
-          latest_yml=$(find electron/dist -type f -name "latest-mac.yml" | head -n 1)
-          if [ -n "$latest_yml" ]; then
-            echo "Uploading latest-mac.yml"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} "$latest_yml"
-          fi
+      - name: Build and publish Electron application
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python scripts/build_electron.py --publish onTag
 
   # Build Electron application for Windows
   build-electron-windows:
@@ -274,48 +220,10 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Build Electron application
-        run: uv run python scripts/build_electron.py
-
-      - name: Get version
-        id: version
-        shell: pwsh
-        run: |
-          $tagName = $env:GITHUB_REF -replace '^refs/tags/', ''
-          echo "TAG_NAME=$tagName" >> $env:GITHUB_OUTPUT
-
-      - name: Find and upload Windows artifacts
-        shell: pwsh
-        run: |
-          # Find portable exe (not containing "Setup")
-          $portableExe = Get-ChildItem -Path electron\dist -Filter *.exe -File | Where-Object { $_.Name -notmatch "Setup" } | Select-Object -First 1
-          if ($portableExe) {
-            Write-Host "Uploading portable: $($portableExe.Name)"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} $portableExe.FullName
-          }
-
-          # Find setup exe (containing "Setup")
-          $setupExe = Get-ChildItem -Path electron\dist -Filter *.exe -File | Where-Object { $_.Name -match "Setup" } | Select-Object -First 1
-          if ($setupExe) {
-            Write-Host "Uploading setup: $($setupExe.Name)"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} $setupExe.FullName
-          }
-
-          # Find blockmap
-          $blockmap = Get-ChildItem -Path electron\dist -Filter *.exe.blockmap -File | Select-Object -First 1
-          if ($blockmap) {
-            Write-Host "Uploading blockmap: $($blockmap.Name)"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} $blockmap.FullName
-          }
-
-          # Upload latest.yml (auto-update metadata)
-          $latestYml = Get-ChildItem -Path electron\dist -Filter latest.yml -File | Select-Object -First 1
-          if ($latestYml) {
-            Write-Host "Uploading latest.yml"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} $latestYml.FullName
-          }
+      - name: Build and publish Electron application
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python scripts/build_electron.py --publish onTag
 
   # Build Electron application for Linux
   build-electron-linux:
@@ -332,41 +240,7 @@ jobs:
       - name: Setup Electron build environment
         uses: ./.github/actions/setup-electron-build
 
-      - name: Build Electron application
-        run: uv run python scripts/build_electron.py
-
-      - name: Get version
-        id: version
-        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Find and upload Linux artifacts
-        run: |
-          # Find AppImage file
-          appimage_file=$(find electron/dist -type f -name "*.AppImage" | head -n 1)
-          if [ -n "$appimage_file" ]; then
-            echo "Uploading AppImage: $(basename "$appimage_file")"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} "$appimage_file"
-          fi
-
-          # Find deb file
-          deb_file=$(find electron/dist -type f -name "*.deb" | head -n 1)
-          if [ -n "$deb_file" ]; then
-            echo "Uploading deb: $(basename "$deb_file")"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} "$deb_file"
-          fi
-
-          # Find tar.gz file
-          targz_file=$(find electron/dist -type f -name "*.tar.gz" | head -n 1)
-          if [ -n "$targz_file" ]; then
-            echo "Uploading tar.gz: $(basename "$targz_file")"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} "$targz_file"
-          fi
-
-          # Upload latest-linux.yml (auto-update metadata)
-          latest_yml=$(find electron/dist -type f -name "latest-linux.yml" | head -n 1)
-          if [ -n "$latest_yml" ]; then
-            echo "Uploading latest-linux.yml"
-            gh release upload --clobber ${{ steps.version.outputs.TAG_NAME }} "$latest_yml"
-          fi
+      - name: Build and publish Electron application
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python scripts/build_electron.py --publish onTag
