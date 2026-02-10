@@ -170,6 +170,8 @@ class PhoneAgentManager:
                     device_manager.force_refresh()
                     device = device_manager.get_device_protocol(actual_device_id)
 
+                self._prepare_adb_keyboard_if_needed(actual_device_id, device_manager)
+
                 agent = create_agent(
                     agent_type=agent_type,
                     model_config=model_config,
@@ -200,6 +202,45 @@ class PhoneAgentManager:
                 raise AgentInitializationError(
                     f"Failed to initialize agent: {str(e)}"
                 ) from e
+
+    def _prepare_adb_keyboard_if_needed(
+        self, actual_device_id: str, device_manager
+    ) -> None:
+        """Best-effort ADB Keyboard preparation for local ADB devices."""
+        from AutoGLM_GUI.adb_plus import ADBKeyboardInstaller
+
+        managed = device_manager.get_device_by_device_id(actual_device_id)
+        if not managed:
+            logger.warning(
+                f"Skipping ADB Keyboard setup: device {actual_device_id} not found in DeviceManager"
+            )
+            return
+
+        if managed.connection_type.value == "remote":
+            logger.debug(
+                f"Skipping ADB Keyboard setup for remote device {actual_device_id}"
+            )
+            return
+
+        try:
+            logger.info(f"Checking ADB Keyboard for device {actual_device_id}...")
+            installer = ADBKeyboardInstaller(device_id=actual_device_id)
+            status = installer.get_status()
+
+            if status.get("installed") and status.get("enabled"):
+                logger.info(f"Device {actual_device_id}: ADB Keyboard ready")
+                return
+
+            logger.info(f"Setting up ADB Keyboard for device {actual_device_id}...")
+            success, message = installer.auto_setup()
+            if success:
+                logger.info(f"Device {actual_device_id}: {message}")
+            else:
+                logger.warning(f"Device {actual_device_id}: {message}")
+        except Exception as e:
+            logger.warning(
+                f"ADB Keyboard preparation failed for {actual_device_id}: {e}"
+            )
 
     def _auto_initialize_agent(
         self, agent_key: str, actual_device_id: str, agent_type: str | None = None
@@ -236,7 +277,7 @@ class PhoneAgentManager:
         if not effective_config.base_url:
             raise AgentInitializationError(
                 f"Cannot auto-initialize agent for {agent_key}: base_url not configured. "
-                f"Please configure base_url via /api/config or call /api/init explicitly."
+                f"Please configure base_url via /api/config before sending tasks."
             )
 
         # 使用本地配置类型
@@ -608,54 +649,6 @@ class PhoneAgentManager:
             return False
 
         return True
-
-    def abort_streaming_chat(self, device_id: str) -> bool:
-        """同步中止流式对话 (向后兼容)。
-
-        Args:
-            device_id: 设备标识符
-
-        Returns:
-            bool: True 表示发送了中止信号，False 表示没有活跃会话
-        """
-        with self._streaming_contexts_lock:
-            if device_id not in self._abort_events:
-                logger.warning(f"No active streaming chat for device {device_id}")
-                return False
-
-            logger.info(f"Aborting streaming chat for device {device_id}")
-            handler = self._abort_events[device_id]
-
-            if isinstance(handler, threading.Event):
-                handler.set()
-                return True
-            elif asyncio.iscoroutinefunction(handler):
-                logger.warning(
-                    f"Detected async handler for {device_id}, "
-                    f"but called sync abort. Use abort_streaming_chat_async instead."
-                )
-                # 尝试在当前线程的 event loop 中运行
-                try:
-                    loop = asyncio.get_event_loop()
-                    if loop.is_running():
-                        # 不能在运行中的 loop 中调用 run_until_complete
-                        # 创建一个 task
-                        asyncio.create_task(self.abort_streaming_chat_async(device_id))
-                        return True
-                    else:
-                        loop.run_until_complete(
-                            self.abort_streaming_chat_async(device_id)
-                        )
-                        return True
-                except RuntimeError:
-                    logger.error("Cannot abort async agent from sync context")
-                    return False
-            elif callable(handler):
-                handler()
-                return True
-            else:
-                logger.warning(f"Unknown abort handler type: {type(handler)}")
-                return False
 
     def is_streaming_active(self, device_id: str) -> bool:
         """检查设备是否有活跃的流式会话."""
