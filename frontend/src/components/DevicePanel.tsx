@@ -13,7 +13,8 @@ import {
 import { throttle } from 'lodash';
 import { DeviceMonitor } from './DeviceMonitor';
 import type {
-  ThinkingChunkEvent,
+  CancelledEvent,
+  ThinkingEvent,
   StepEvent,
   DoneEvent,
   ErrorEvent,
@@ -305,7 +306,7 @@ export function DevicePanel({
     const stream = sendMessageStream(
       userMessage.content,
       deviceId,
-      (event: ThinkingChunkEvent) => {
+      (event: ThinkingEvent) => {
         // Buffer chunks and batch update every 50ms to reduce render frequency
         thinkingChunksBuffer.push(event.chunk);
 
@@ -399,7 +400,7 @@ export function DevicePanel({
         chatStreamRef.current = null;
         // 历史记录已由后端自动保存，无需前端保存
       },
-      (event: { type: 'aborted'; message: string }) => {
+      (event: CancelledEvent) => {
         // Clear any pending updates
         if (updateTimeoutId !== null) {
           clearTimeout(updateTimeoutId);
@@ -407,7 +408,7 @@ export function DevicePanel({
 
         const updatedAgentMessage = {
           ...agentMessage,
-          content: event.message || 'Chat aborted by user',
+          content: event.message || 'Task cancelled by user',
           success: false,
           isStreaming: false,
           thinking: [...thinkingList],
