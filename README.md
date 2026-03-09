@@ -81,9 +81,9 @@
 
 | 操作系统 | 下载链接 | 说明 |
 |---------|---------|------|
-| 🪟 **Windows** (x64) | [📦 下载便携版 EXE](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.5.5/AutoGLM.GUI.1.5.5.exe) | 适用于 Windows 10/11，免安装 |
-| 🍎 **macOS** (Apple Silicon) | [📦 下载 DMG](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.5.5/AutoGLM.GUI-1.5.5-arm64.dmg) | 适用于 M 芯片 Mac |
-| 🐧 **Linux** (x64) | [📦 下载 AppImage](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.5.5/AutoGLM.GUI-1.5.5.AppImage) \| [deb](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.5.5/autoglm-gui_1.5.5_amd64.deb) \| [tar.gz](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.5.5/autoglm-gui-1.5.5.tar.gz) | 通用格式，支持主流发行版 |
+| 🪟 **Windows** (x64) | [📦 下载便携版 EXE](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.5.13/AutoGLM.GUI.1.5.13.exe) | 适用于 Windows 10/11，免安装 |
+| 🍎 **macOS** (Apple Silicon) | [📦 下载 DMG](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.5.13/AutoGLM.GUI-1.5.13-arm64.dmg) | 适用于 M 芯片 Mac |
+| 🐧 **Linux** (x64) | [📦 下载 AppImage](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.5.13/AutoGLM.GUI-1.5.13.AppImage) \| [deb](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.5.13/autoglm-gui_1.5.13_amd64.deb) \| [tar.gz](https://github.com/suyiiyii/AutoGLM-GUI/releases/download/v1.5.13/autoglm-gui-1.5.13.tar.gz) | 通用格式，支持主流发行版 |
 
 </div>
 
