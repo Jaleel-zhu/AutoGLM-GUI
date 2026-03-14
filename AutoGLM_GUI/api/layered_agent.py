@@ -551,7 +551,7 @@ async def layered_agent_chat(request: LayeredAgentRequest) -> StreamingResponse:
                                                 tool_args = {"raw": str(call.arguments)}
 
                             logger.info(
-                                f"[LayeredAgent] Tool call: {tool_name}, args keys: {list(tool_args.keys()) if isinstance(tool_args, dict) else 'not dict'}"
+                                f"[LayeredAgent] Tool call: {tool_name}, args keys: {list(tool_args.keys())}"
                             )
 
                             current_tool_call = {
