@@ -100,7 +100,25 @@ class TaskManager:
         )
 
     async def archive_session(self, session_id: str) -> TaskSessionRecord | None:
-        return await asyncio.to_thread(self.store.archive_session, session_id)
+        session = await self.get_session(session_id)
+        if session is None:
+            return None
+        archived = await asyncio.to_thread(self.store.archive_session, session_id)
+        if archived is not None:
+            # Clean up the contextual agent for this session to prevent memory leak.
+            # The agent key pattern is "device_id:chat:session_id".
+            device_id = str(archived["device_id"])
+            context = f"chat:{session_id}"
+            try:
+                from AutoGLM_GUI.phone_agent_manager import PhoneAgentManager
+
+                manager = PhoneAgentManager.get_instance()
+                manager.destroy_agent(device_id, context=context)
+            except Exception as exc:
+                logger.debug(
+                    f"Contextual agent cleanup skipped for {device_id}/{context}: {exc}"
+                )
+        return archived
 
     async def submit_chat_task(
         self,
@@ -322,47 +340,65 @@ class TaskManager:
                 )
                 abort_registered = True
 
-                async for event in agent.stream(task["input_text"]):
-                    event_type = event["type"]
-                    event_data = dict(event.get("data", {}))
+                # Early cancel: if cancel was requested before streaming
+                # started (race with cancel_task), skip the stream entirely
+                if task_id in self._cancel_requested:
+                    final_message = "Task cancelled by user"
+                    final_status = TaskStatus.CANCELLED.value
+                else:
+                    async for event in agent.stream(task["input_text"]):
+                        event_type = event["type"]
+                        event_data = dict(event.get("data", {}))
 
-                    if event_type == "step":
-                        step_count = max(step_count, int(event_data.get("step", 0)))
-                        timings = trace_module.get_step_timing_summary(
-                            step_count,
-                            trace_id=trace_id,
-                        )
-                        if timings is not None:
-                            event_data = {**event_data, "timings": timings}
+                        if event_type == "step":
+                            step_count = max(step_count, int(event_data.get("step", 0)))
+                            timings = trace_module.get_step_timing_summary(
+                                step_count,
+                                trace_id=trace_id,
+                            )
+                            if timings is not None:
+                                event_data = {**event_data, "timings": timings}
 
-                    await asyncio.to_thread(
-                        self.store.append_event,
-                        task_id=task_id,
-                        event_type=event_type,
-                        payload=event_data,
-                        role="assistant",
-                    )
+                        await asyncio.to_thread(
+                            self.store.append_event,
+                            task_id=task_id,
+                            event_type=event_type,
+                            payload=event_data,
+                            role="assistant",
+                        )
 
-                    if event_type == "done":
-                        final_message = str(event_data.get("message", ""))
-                        final_status = (
-                            TaskStatus.SUCCEEDED.value
-                            if event_data.get("success", False)
-                            else TaskStatus.FAILED.value
-                        )
-                        step_count = int(event_data.get("steps", step_count))
-                    elif event_type == "error":
-                        final_message = str(event_data.get("message", "Task failed"))
-                        final_status = TaskStatus.FAILED.value
-                    elif event_type == "cancelled":
-                        final_message = str(
-                            event_data.get("message", "Task cancelled by user")
-                        )
-                        final_status = TaskStatus.CANCELLED.value
+                        if event_type == "done":
+                            final_message = str(event_data.get("message", ""))
+                            final_status = (
+                                TaskStatus.SUCCEEDED.value
+                                if event_data.get("success", False)
+                                else TaskStatus.FAILED.value
+                            )
+                            step_count = int(event_data.get("steps", step_count))
+                        elif event_type == "error":
+                            final_message = str(
+                                event_data.get("message", "Task failed")
+                            )
+                            final_status = TaskStatus.FAILED.value
+                        elif event_type == "cancelled":
+                            final_message = str(
+                                event_data.get("message", "Task cancelled by user")
+                            )
+                            final_status = TaskStatus.CANCELLED.value
 
             if not final_message:
                 final_message = "Task finished without a final response"
                 final_status = TaskStatus.FAILED.value
+
+            # If cancel was requested but the stream exited normally (agent
+            # sets _is_running=False without raising CancelledError), override
+            # the status so the task is recorded as CANCELLED.
+            if (
+                task_id in self._cancel_requested
+                and final_status != TaskStatus.CANCELLED.value
+            ):
+                final_message = "Task cancelled by user"
+                final_status = TaskStatus.CANCELLED.value
         except asyncio.CancelledError:
             if task_id in self._cancel_requested:
                 final_message = "Task cancelled by user"
@@ -423,6 +459,8 @@ class TaskManager:
                     device_id,
                     context=context,
                 )
+            if final_status == TaskStatus.FAILED.value:
+                manager.set_error_state(device_id, final_message, context=context)
             if acquired:
                 manager.release_device(device_id, context=context)
 
@@ -630,48 +668,62 @@ class TaskManager:
             abort_registered = True
             agent.reset()
 
-            async for event in agent.stream(task["input_text"]):
-                event_type = event["type"]
-                event_data = dict(event.get("data", {}))
-                if event_type == "thinking":
-                    await asyncio.to_thread(
-                        self.store.append_event,
-                        task_id=task_id,
-                        event_type="thinking",
-                        payload=event_data,
-                        role="assistant",
-                    )
-                elif event_type == "step":
-                    step_count = max(step_count, int(event_data.get("step", 0)))
-                    await asyncio.to_thread(
-                        self.store.append_event,
-                        task_id=task_id,
-                        event_type="step",
-                        payload=event_data,
-                        role="assistant",
-                    )
-                elif event_type == "done":
-                    final_message = str(event_data.get("message", "Task completed"))
-                    final_status = (
-                        TaskStatus.SUCCEEDED.value
-                        if event_data.get("success", False)
-                        else TaskStatus.FAILED.value
-                    )
-                    step_count = int(event_data.get("steps", step_count))
-                elif event_type == "error":
-                    final_message = str(event_data.get("message", "Task failed"))
-                    final_status = TaskStatus.FAILED.value
-                    await asyncio.to_thread(
-                        self.store.append_event,
-                        task_id=task_id,
-                        event_type="error",
-                        payload={"message": final_message},
-                        role="assistant",
-                    )
+            # Early cancel: if cancel was requested before streaming started
+            if task_id in self._cancel_requested:
+                final_message = "Task cancelled by user"
+                final_status = TaskStatus.CANCELLED.value
+            else:
+                async for event in agent.stream(task["input_text"]):
+                    event_type = event["type"]
+                    event_data = dict(event.get("data", {}))
+                    if event_type == "thinking":
+                        await asyncio.to_thread(
+                            self.store.append_event,
+                            task_id=task_id,
+                            event_type="thinking",
+                            payload=event_data,
+                            role="assistant",
+                        )
+                    elif event_type == "step":
+                        step_count = max(step_count, int(event_data.get("step", 0)))
+                        await asyncio.to_thread(
+                            self.store.append_event,
+                            task_id=task_id,
+                            event_type="step",
+                            payload=event_data,
+                            role="assistant",
+                        )
+                    elif event_type == "done":
+                        final_message = str(event_data.get("message", "Task completed"))
+                        final_status = (
+                            TaskStatus.SUCCEEDED.value
+                            if event_data.get("success", False)
+                            else TaskStatus.FAILED.value
+                        )
+                        step_count = int(event_data.get("steps", step_count))
+                    elif event_type == "error":
+                        final_message = str(event_data.get("message", "Task failed"))
+                        final_status = TaskStatus.FAILED.value
+                        await asyncio.to_thread(
+                            self.store.append_event,
+                            task_id=task_id,
+                            event_type="error",
+                            payload={"message": final_message},
+                            role="assistant",
+                        )
 
             if not final_message:
                 final_message = "Task finished without a final response"
                 final_status = TaskStatus.FAILED.value
+
+            # If cancel was requested but the stream exited normally,
+            # override status to CANCELLED.
+            if (
+                task_id in self._cancel_requested
+                and final_status != TaskStatus.CANCELLED.value
+            ):
+                final_message = "Task cancelled by user"
+                final_status = TaskStatus.CANCELLED.value
         except asyncio.CancelledError:
             if task_id in self._cancel_requested:
                 final_message = "Task cancelled by user"
@@ -732,6 +784,8 @@ class TaskManager:
                     device_id,
                     context=context,
                 )
+            if final_status == TaskStatus.FAILED.value:
+                manager.set_error_state(device_id, final_message, context=context)
             if acquired:
                 manager.release_device(device_id, context=context)
 
