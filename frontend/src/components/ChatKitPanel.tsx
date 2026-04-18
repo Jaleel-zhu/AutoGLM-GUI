@@ -9,7 +9,6 @@ import { DeviceMonitor } from './DeviceMonitor';
 import {
   AlertCircle,
   CheckCircle2,
-  Loader2,
   Send,
   RotateCcw,
   Layers,
@@ -19,6 +18,7 @@ import {
   ChevronUp,
   History,
   ListChecks,
+  Loader2,
   Square,
 } from 'lucide-react';
 import type { Workflow, HistoryRecordResponse } from '../api';
@@ -58,6 +58,7 @@ interface ChatKitPanelProps {
   deviceName: string;
   deviceConnectionType?: string;
   isVisible: boolean;
+  unlimitedStepsEnabled?: boolean;
 }
 
 // 执行步骤类型
@@ -252,6 +253,7 @@ export function ChatKitPanel({
   deviceName,
   deviceConnectionType,
   isVisible,
+  unlimitedStepsEnabled = false,
 }: ChatKitPanelProps) {
   const t = useTranslation();
 
@@ -693,6 +695,14 @@ export function ChatKitPanel({
             >
               {t.chatkit?.layeredAgent || '分层代理模式'}
             </Badge>
+            {loading && unlimitedStepsEnabled && (
+              <Badge
+                variant="secondary"
+                className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+              >
+                无限步数模式
+              </Badge>
+            )}
             {/* History button with Popover */}
             <Popover
               open={showHistoryPopover}
