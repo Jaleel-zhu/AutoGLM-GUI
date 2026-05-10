@@ -266,7 +266,8 @@ export function ChatKitPanel({
   const [sessionId, setSessionId] = React.useState<string | null>(null);
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
   const scrollAreaRef = React.useRef<HTMLDivElement>(null);
-  const [isNearBottom, setIsNearBottom] = React.useState(true);
+  const isNearBottomRef = React.useRef(true);
+  const [showScrollToBottom, setShowScrollToBottom] = React.useState(false);
   const taskStreamRef = React.useRef<{ close: () => void } | null>(null);
   const currentTaskIdRef = React.useRef<string | null>(null);
   const taskRunsRef = React.useRef<Record<string, TaskRunResponse>>({});
@@ -297,18 +298,29 @@ export function ChatKitPanel({
       const clientHeight = target.clientHeight;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-      // Consider "near bottom" if within 200px
-      setIsNearBottom(distanceFromBottom < 200);
+      const nearBottom = distanceFromBottom < 200;
+      isNearBottomRef.current = nearBottom;
+      setShowScrollToBottom(!nearBottom);
     },
     []
   );
 
-  // Auto-scroll to bottom only if user is near bottom
+  // Auto-scroll to bottom only if user was near bottom before the update.
+  // Uses a ref (not state) to avoid the race condition where smooth-scroll
+  // onScroll events flip the state mid-animation and suppress the next scroll.
   React.useEffect(() => {
-    if (isNearBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (isNearBottomRef.current) {
+      const viewport = scrollAreaRef.current?.querySelector(
+        '[data-slot="scroll-area-viewport"]'
+      ) as HTMLDivElement | null;
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
     }
-  }, [messages, isNearBottom]);
+    if (messages.length === 0) {
+      setShowScrollToBottom(false);
+    }
+  }, [messages]);
 
   React.useEffect(() => {
     return () => {
@@ -372,6 +384,8 @@ export function ChatKitPanel({
     };
     setMessages([userMessage, agentMessage]);
     setShowHistoryPopover(false);
+    setShowScrollToBottom(false);
+    isNearBottomRef.current = true;
   };
 
   const handleClearHistory = async () => {
@@ -651,6 +665,8 @@ export function ChatKitPanel({
       taskEventsRef.current = {};
       currentTaskIdRef.current = null;
       setMessages([]);
+      setShowScrollToBottom(false);
+      isNearBottomRef.current = true;
       setLoading(false);
       setError(null);
       setAborting(false);
@@ -786,185 +802,210 @@ export function ChatKitPanel({
         )}
 
         {/* Messages with Execution Steps */}
-        <ScrollArea
-          ref={scrollAreaRef}
-          className="flex-1 min-h-0"
-          onScroll={handleScroll}
-        >
-          <div className="p-4 space-y-4">
-            {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center py-12">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/30 mb-4">
-                  <Layers className="h-8 w-8 text-purple-500" />
+        <div className="flex-1 min-h-0 relative">
+          <ScrollArea
+            ref={scrollAreaRef}
+            className="h-full"
+            onScroll={handleScroll}
+          >
+            <div className="p-4 space-y-4">
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center py-12">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/30 mb-4">
+                    <Layers className="h-8 w-8 text-purple-500" />
+                  </div>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">
+                    {t.chatkit?.title || '分层代理模式'}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-xs">
+                    {t.chatkit?.layeredAgentDesc ||
+                      '决策模型负责规划任务，视觉模型负责执行。你可以看到每一步的执行过程。'}
+                  </p>
                 </div>
-                <p className="font-medium text-slate-900 dark:text-slate-100">
-                  {t.chatkit?.title || '分层代理模式'}
-                </p>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-xs">
-                  {t.chatkit?.layeredAgentDesc ||
-                    '决策模型负责规划任务，视觉模型负责执行。你可以看到每一步的执行过程。'}
-                </p>
-              </div>
-            ) : (
-              messages.map(message => (
-                <div key={message.id} className="space-y-2">
-                  {message.role === 'user' ? (
-                    <div className="flex justify-end">
-                      <div className="max-w-[80%]">
-                        <div className="bg-purple-600 text-white px-4 py-2 rounded-2xl rounded-br-sm">
-                          <p className="whitespace-pre-wrap">
-                            {message.content}
+              ) : (
+                messages.map(message => (
+                  <div key={message.id} className="space-y-2">
+                    {message.role === 'user' ? (
+                      <div className="flex justify-end">
+                        <div className="max-w-[80%]">
+                          <div className="bg-purple-600 text-white px-4 py-2 rounded-2xl rounded-br-sm">
+                            <p className="whitespace-pre-wrap">
+                              {message.content}
+                            </p>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1 text-right">
+                            {message.timestamp.toLocaleTimeString()}
                           </p>
                         </div>
-                        <p className="text-xs text-slate-400 mt-1 text-right">
-                          {message.timestamp.toLocaleTimeString()}
-                        </p>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {/* Execution Steps */}
-                      {message.steps && message.steps.length > 0 && (
-                        <div className="space-y-2">
-                          {message.steps.map((step, idx) => (
-                            <div
-                              key={step.id}
-                              className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden"
-                            >
-                              {/* Step Header */}
-                              <button
-                                onClick={() =>
-                                  toggleStepExpansion(message.id, step.id)
-                                }
-                                className="w-full flex items-center justify-between p-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                    ) : (
+                      <div className="space-y-3">
+                        {/* Execution Steps */}
+                        {message.steps && message.steps.length > 0 && (
+                          <div className="space-y-2">
+                            {message.steps.map((step, idx) => (
+                              <div
+                                key={step.id}
+                                className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden"
                               >
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
-                                      step.type === 'tool_call'
-                                        ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
-                                        : 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
-                                    }`}
-                                  >
-                                    {step.type === 'tool_call' ? (
-                                      <Wrench className="w-3 h-3" />
-                                    ) : (
-                                      <MessageSquare className="w-3 h-3" />
-                                    )}
+                                {/* Step Header */}
+                                <button
+                                  onClick={() =>
+                                    toggleStepExpansion(message.id, step.id)
+                                  }
+                                  className="w-full flex items-center justify-between p-3 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium ${
+                                        step.type === 'tool_call'
+                                          ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
+                                          : 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400'
+                                      }`}
+                                    >
+                                      {step.type === 'tool_call' ? (
+                                        <Wrench className="w-3 h-3" />
+                                      ) : (
+                                        <MessageSquare className="w-3 h-3" />
+                                      )}
+                                    </div>
+                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                                      Step {idx + 1}: {step.content}
+                                    </span>
                                   </div>
-                                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                                    Step {idx + 1}: {step.content}
-                                  </span>
-                                </div>
-                                {step.isExpanded ? (
-                                  <ChevronUp className="w-4 h-4 text-slate-400" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4 text-slate-400" />
-                                )}
-                              </button>
+                                  {step.isExpanded ? (
+                                    <ChevronUp className="w-4 h-4 text-slate-400" />
+                                  ) : (
+                                    <ChevronDown className="w-4 h-4 text-slate-400" />
+                                  )}
+                                </button>
 
-                              {/* Step Content */}
-                              {step.isExpanded && (
-                                <div className="px-3 pb-3 space-y-2">
-                                  {step.type === 'tool_call' &&
-                                    step.toolArgs && (
-                                      <div className="bg-white dark:bg-slate-900 rounded-lg p-3 text-sm">
-                                        <p className="text-xs text-slate-500 mb-1 font-medium">
-                                          {step.toolName === 'chat'
-                                            ? '发送给 Phone Agent 的指令:'
-                                            : '工具参数:'}
-                                        </p>
-                                        {step.toolName === 'chat' ? (
-                                          <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
-                                            {(
-                                              step.toolArgs as {
-                                                message?: string;
-                                              }
-                                            ).message ||
-                                              JSON.stringify(
+                                {/* Step Content */}
+                                {step.isExpanded && (
+                                  <div className="px-3 pb-3 space-y-2">
+                                    {step.type === 'tool_call' &&
+                                      step.toolArgs && (
+                                        <div className="bg-white dark:bg-slate-900 rounded-lg p-3 text-sm">
+                                          <p className="text-xs text-slate-500 mb-1 font-medium">
+                                            {step.toolName === 'chat'
+                                              ? '发送给 Phone Agent 的指令:'
+                                              : '工具参数:'}
+                                          </p>
+                                          {step.toolName === 'chat' ? (
+                                            <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap">
+                                              {(
+                                                step.toolArgs as {
+                                                  message?: string;
+                                                }
+                                              ).message ||
+                                                JSON.stringify(
+                                                  step.toolArgs,
+                                                  null,
+                                                  2
+                                                )}
+                                            </p>
+                                          ) : (
+                                            <pre className="text-xs text-slate-600 dark:text-slate-400 overflow-x-auto">
+                                              {JSON.stringify(
                                                 step.toolArgs,
                                                 null,
                                                 2
                                               )}
+                                            </pre>
+                                          )}
+                                        </div>
+                                      )}
+                                    {step.type === 'tool_result' &&
+                                      step.toolResult && (
+                                        <div className="bg-white dark:bg-slate-900 rounded-lg p-3 text-sm">
+                                          <p className="text-xs text-slate-500 mb-1 font-medium">
+                                            执行结果:
                                           </p>
-                                        ) : (
-                                          <pre className="text-xs text-slate-600 dark:text-slate-400 overflow-x-auto">
-                                            {JSON.stringify(
-                                              step.toolArgs,
-                                              null,
-                                              2
-                                            )}
+                                          <pre className="text-xs text-slate-600 dark:text-slate-400 overflow-x-auto whitespace-pre-wrap">
+                                            {typeof step.toolResult === 'string'
+                                              ? step.toolResult
+                                              : JSON.stringify(
+                                                  step.toolResult,
+                                                  null,
+                                                  2
+                                                )}
                                           </pre>
-                                        )}
-                                      </div>
-                                    )}
-                                  {step.type === 'tool_result' &&
-                                    step.toolResult && (
-                                      <div className="bg-white dark:bg-slate-900 rounded-lg p-3 text-sm">
-                                        <p className="text-xs text-slate-500 mb-1 font-medium">
-                                          执行结果:
-                                        </p>
-                                        <pre className="text-xs text-slate-600 dark:text-slate-400 overflow-x-auto whitespace-pre-wrap">
-                                          {typeof step.toolResult === 'string'
-                                            ? step.toolResult
-                                            : JSON.stringify(
-                                                step.toolResult,
-                                                null,
-                                                2
-                                              )}
-                                        </pre>
-                                      </div>
-                                    )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                                        </div>
+                                      )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
 
-                      {/* Final Response */}
-                      {message.content && (
-                        <div className="flex justify-start">
-                          <div
-                            className={`max-w-[85%] rounded-2xl rounded-tl-sm px-4 py-3 ${
-                              message.success === false
-                                ? 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400'
-                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
-                            }`}
-                          >
-                            <div className="flex items-start gap-2">
-                              {message.success !== undefined && (
-                                <CheckCircle2
-                                  className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-                                    message.success
-                                      ? 'text-green-500'
-                                      : 'text-red-500'
-                                  }`}
-                                />
-                              )}
-                              <p className="whitespace-pre-wrap">
-                                {message.content}
-                              </p>
+                        {/* Final Response */}
+                        {message.content && (
+                          <div className="flex justify-start">
+                            <div
+                              className={`max-w-[85%] rounded-2xl rounded-tl-sm px-4 py-3 ${
+                                message.success === false
+                                  ? 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                              }`}
+                            >
+                              <div className="flex items-start gap-2">
+                                {message.success !== undefined && (
+                                  <CheckCircle2
+                                    className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                                      message.success
+                                        ? 'text-green-500'
+                                        : 'text-red-500'
+                                    }`}
+                                  />
+                                )}
+                                <p className="whitespace-pre-wrap">
+                                  {message.content}
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Streaming indicator */}
-                      {message.isStreaming && !message.content && (
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          正在思考和执行...
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
-          </div>
-        </ScrollArea>
+                        {/* Streaming indicator */}
+                        {message.isStreaming && !message.content && (
+                          <div className="flex items-center gap-2 text-sm text-slate-500">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            正在思考和执行...
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+          </ScrollArea>
+          {showScrollToBottom && messages.length > 0 && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center z-10">
+              <Button
+                onClick={() => {
+                  const viewport = scrollAreaRef.current?.querySelector(
+                    '[data-slot="scroll-area-viewport"]'
+                  ) as HTMLDivElement | null;
+                  if (viewport) {
+                    viewport.scrollTo({
+                      top: viewport.scrollHeight,
+                      behavior: 'smooth',
+                    });
+                  }
+                  setShowScrollToBottom(false);
+                  isNearBottomRef.current = true;
+                }}
+                size="sm"
+                className="pointer-events-auto shadow-lg bg-[#1d9bf0] text-white hover:bg-[#1a8cd8]"
+              >
+                查看最新消息
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* Input area */}
         <div className="p-4 border-t border-slate-200 dark:border-slate-800">

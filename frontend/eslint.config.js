@@ -124,6 +124,8 @@ export default [
       'node_modules/**',
       'build/**',
       'coverage/**',
+      'test-results/**',
+      'playwright-report/**',
       '*.config.js',
       '*.config.ts',
       'vite.config.*',
