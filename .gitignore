@@ -58,3 +58,4 @@ docs/.docusaurus/
 # IDE
 .vscode/
 .idea/
+test-results/

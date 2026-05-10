@@ -181,7 +181,7 @@ export function DevicePanel({
   // const hasAutoInited = useRef(false);
   const prevMessageCountRef = useRef(0);
   const prevMessageSigRef = useRef<string | null>(null);
-  const [isAtBottom, setIsAtBottom] = useState(true);
+  const isAtBottomRef = useRef(true);
   const [showNewMessageNotice, setShowNewMessageNotice] = useState(false);
   const throttledUpdateScrollStateRef = useRef<ReturnType<
     typeof throttle
@@ -198,8 +198,9 @@ export function DevicePanel({
       // Consider the user "at bottom" only when they are effectively at the end
       // of the scroll area, to avoid unwanted auto-scrolling when they have
       // intentionally scrolled slightly up.
-      const atBottom = distanceFromBottom <= 1;
-      setIsAtBottom(atBottom);
+      const atBottom = distanceFromBottom <= 5;
+      isAtBottomRef.current = atBottom;
+
       // Still hide the new message notice when the user is near the bottom,
       // using the more generous threshold.
       if (distanceFromBottom <= threshold) {
@@ -303,7 +304,7 @@ export function DevicePanel({
     ].join('|');
 
     setShowNewMessageNotice(false);
-    setIsAtBottom(true);
+    isAtBottomRef.current = true;
     setShowHistoryPopover(false);
   };
 
@@ -341,7 +342,7 @@ export function DevicePanel({
   const handleReset = useCallback(async () => {
     await resetConversation();
     setShowNewMessageNotice(false);
-    setIsAtBottom(true);
+    isAtBottomRef.current = true;
     prevMessageCountRef.current = 0;
     prevMessageSigRef.current = null;
   }, [resetConversation]);
@@ -377,8 +378,11 @@ export function DevicePanel({
     prevMessageCountRef.current = messages.length;
     prevMessageSigRef.current = latestSignature;
 
-    if (isAtBottom) {
-      scrollToBottom();
+    if (isAtBottomRef.current) {
+      const container = messagesContainerRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
       const frameId = requestAnimationFrame(() => {
         setShowNewMessageNotice(false);
       });
@@ -398,7 +402,7 @@ export function DevicePanel({
       });
       return () => cancelAnimationFrame(frameId);
     }
-  }, [messages, isAtBottom, scrollToBottom]);
+  }, [messages]);
 
   // Load workflows
   useEffect(() => {
@@ -427,7 +431,7 @@ export function DevicePanel({
   const handleScrollToLatest = () => {
     scrollToBottom();
     setShowNewMessageNotice(false);
-    setIsAtBottom(true);
+    isAtBottomRef.current = true;
   };
 
   const handleInputKeyDown = (
@@ -563,6 +567,7 @@ export function DevicePanel({
         <div className="flex-1 min-h-0 relative">
           <div
             className="h-full overflow-y-auto p-4"
+            data-testid="chat-scroll-container"
             ref={messagesContainerRef}
             onScroll={handleMessagesScroll}
           >
