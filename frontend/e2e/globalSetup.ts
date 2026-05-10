@@ -8,6 +8,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { sleep, terminateProcessTree } from './processTree';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,22 +19,6 @@ type ServiceUrls = {
   backend_url: string;
   frontend_url: string;
 };
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-async function killProcessGroup(pid: number) {
-  try {
-    process.kill(-pid, 'SIGTERM');
-  } catch {
-    return;
-  }
-  await sleep(1000);
-  try {
-    process.kill(-pid, 'SIGKILL');
-  } catch {
-    /* process group is already gone */
-  }
-}
 
 function readServiceUrls(urlsPath: string): ServiceUrls | null {
   try {
@@ -54,7 +39,7 @@ async function globalSetup() {
   try {
     const previousPid = Number(fs.readFileSync(pidPath, 'utf-8').trim());
     if (Number.isFinite(previousPid)) {
-      await killProcessGroup(previousPid);
+      await terminateProcessTree(previousPid);
     }
   } catch {
     /* PID file may not exist */
@@ -122,7 +107,7 @@ async function globalSetup() {
     }
     // Kill the failed process and wait before retry
     if (proc?.pid) {
-      await killProcessGroup(proc.pid);
+      await terminateProcessTree(proc.pid);
       await sleep(1000);
     }
   }

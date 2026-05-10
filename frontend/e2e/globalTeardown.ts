@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { terminateProcessTree } from './processTree';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,21 +10,11 @@ async function globalTeardown() {
   const pidPath = path.resolve(__dirname, '.services_pid');
   const urlsPath = path.resolve(__dirname, '.service_urls.json');
 
-  // Kill by saved PID (using process group to get children too)
+  // Kill by saved PID, including child services.
   try {
-    const pid = fs.readFileSync(pidPath, 'utf-8').trim();
+    const pid = Number(fs.readFileSync(pidPath, 'utf-8').trim());
     console.log(`[globalTeardown] Killing process group ${pid}`);
-    try {
-      process.kill(-Number(pid), 'SIGTERM');
-    } catch {
-      /* PID file may not exist or process already dead */
-    }
-    await new Promise(r => setTimeout(r, 1000));
-    try {
-      process.kill(-Number(pid), 'SIGKILL');
-    } catch {
-      /* PID file may not exist or process already dead */
-    }
+    await terminateProcessTree(pid);
   } catch {
     // PID file may not exist
   }
