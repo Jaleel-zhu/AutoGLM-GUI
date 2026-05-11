@@ -10,7 +10,6 @@ import {
   Loader2,
   Square,
 } from 'lucide-react';
-import { throttle } from 'lodash';
 import { DeviceMonitor } from './DeviceMonitor';
 import type {
   StepTimingSummary,
@@ -175,44 +174,59 @@ export function DevicePanel({
     deviceSerial,
     sessionStorageKey: `autoglm:classic-session:${deviceSerial}`,
   });
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesContainerRef = useRef<HTMLDivElement>(null);
-  // ✅ 移除 hasAutoInited，不再需要自动初始化逻辑
-  // const hasAutoInited = useRef(false);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const prevMessageCountRef = useRef(0);
   const prevMessageSigRef = useRef<string | null>(null);
+  // The chat follows the latest message by default. Only a deliberate upward
+  // scroll by the user turns this off — programmatic re-pins and content that
+  // grows underneath (e.g. screenshots finishing decode) must never flip it,
+  // otherwise the stale scroll events they emit would strand the view.
   const isAtBottomRef = useRef(true);
+  // Timestamp of the last programmatic scroll-to-bottom. Scroll events that
+  // land within this window are the echo of our own pinning (or of the layout
+  // settling afterwards) and are ignored, not treated as the user leaving.
+  const lastPinTimeRef = useRef(0);
+  // Last observed scrollTop. Used to tell a real upward scroll (scrollTop
+  // decreases) apart from content growing underneath (scrollTop stays put).
+  const lastScrollTopRef = useRef(0);
   const [showNewMessageNotice, setShowNewMessageNotice] = useState(false);
-  const throttledUpdateScrollStateRef = useRef<ReturnType<
-    typeof throttle
-  > | null>(null);
 
-  // Cleanup throttled function on unmount
+  // The actual scrollable element lives inside the Radix ScrollArea.
+  const getScrollViewport = useCallback(
+    () =>
+      (scrollAreaRef.current?.querySelector(
+        '[data-slot="scroll-area-viewport"]'
+      ) as HTMLDivElement | null) ?? null,
+    []
+  );
+
+  const pinToBottom = useCallback(
+    (behavior: 'auto' | 'smooth' = 'auto') => {
+      const viewport = getScrollViewport();
+      if (!viewport) return;
+      lastPinTimeRef.current = performance.now();
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+    },
+    [getScrollViewport]
+  );
+
+  // Step screenshots load asynchronously and grow the content after the
+  // streaming effect already scrolled, which would otherwise leave the chat
+  // parked a few hundred pixels above the latest message. A ResizeObserver
+  // re-pins the view to the bottom whenever the content height changes while
+  // the user is still following along.
   useEffect(() => {
-    const throttledFn = throttle(() => {
-      const container = messagesContainerRef.current;
-      if (!container) return;
-      const threshold = 80;
-      const distanceFromBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight;
-      // Consider the user "at bottom" only when they are effectively at the end
-      // of the scroll area, to avoid unwanted auto-scrolling when they have
-      // intentionally scrolled slightly up.
-      const atBottom = distanceFromBottom <= 5;
-      isAtBottomRef.current = atBottom;
-
-      // Still hide the new message notice when the user is near the bottom,
-      // using the more generous threshold.
-      if (distanceFromBottom <= threshold) {
-        setShowNewMessageNotice(false);
+    const content = contentRef.current;
+    if (!content) return;
+    const observer = new ResizeObserver(() => {
+      if (isAtBottomRef.current) {
+        pinToBottom();
       }
-    }, 100);
-    throttledUpdateScrollStateRef.current = throttledFn;
-    return () => {
-      throttledFn.cancel();
-      throttledUpdateScrollStateRef.current = null;
-    };
-  }, []);
+    });
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [pinToBottom]);
 
   // ✅ 移除 handleInit 函数，不再需要显式初始化
   // Agent 会在首次发送消息时自动初始化
@@ -351,10 +365,6 @@ export function DevicePanel({
     await abortConversation();
   }, [abortConversation]);
 
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
-
   useEffect(() => {
     const latest = messages[messages.length - 1];
     const thinkingSignature = latest?.thinking
@@ -379,10 +389,7 @@ export function DevicePanel({
     prevMessageSigRef.current = latestSignature;
 
     if (isAtBottomRef.current) {
-      const container = messagesContainerRef.current;
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-      }
+      pinToBottom();
       const frameId = requestAnimationFrame(() => {
         setShowNewMessageNotice(false);
       });
@@ -402,7 +409,7 @@ export function DevicePanel({
       });
       return () => cancelAnimationFrame(frameId);
     }
-  }, [messages]);
+  }, [messages, pinToBottom]);
 
   // Load workflows
   useEffect(() => {
@@ -422,16 +429,37 @@ export function DevicePanel({
     setShowWorkflowPopover(false);
   };
 
-  // Throttle scroll event handler to reduce the frequency of state updates
-  // and improve performance, especially on lower-end devices
-  const handleMessagesScroll = () => {
-    throttledUpdateScrollStateRef.current?.();
+  const handleMessagesScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    const scrollTop = target.scrollTop;
+    const prevScrollTop = lastScrollTopRef.current;
+    lastScrollTopRef.current = scrollTop;
+
+    // Ignore the scroll events caused by our own re-pinning and by the
+    // re-layout that late-loading content (screenshots) triggers right after.
+    if (performance.now() - lastPinTimeRef.current < 150) return;
+
+    const distanceFromBottom =
+      target.scrollHeight - scrollTop - target.clientHeight;
+    // A generous band so a few hundred pixels of late-loading content between
+    // streaming updates doesn't break following.
+    if (distanceFromBottom < 150) {
+      isAtBottomRef.current = true;
+      setShowNewMessageNotice(false);
+      return;
+    }
+    // Far from the bottom: only treat it as the user opting out if they
+    // actually scrolled upward. Content growing or a programmatic re-pin keeps
+    // (or raises) scrollTop, so the stale events they emit can't trip this.
+    if (scrollTop < prevScrollTop - 4) {
+      isAtBottomRef.current = false;
+    }
   };
 
   const handleScrollToLatest = () => {
-    scrollToBottom();
-    setShowNewMessageNotice(false);
     isAtBottomRef.current = true;
+    pinToBottom();
+    setShowNewMessageNotice(false);
   };
 
   const handleInputKeyDown = (
@@ -446,7 +474,7 @@ export function DevicePanel({
   return (
     <div className="flex-1 flex gap-4 p-4 items-stretch justify-center min-h-0">
       {/* Chat area - takes remaining space */}
-      <Card className="flex-1 flex flex-col min-h-0 max-w-2xl">
+      <Card className="flex-1 flex flex-col min-h-0 max-w-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-3">
@@ -565,236 +593,237 @@ export function DevicePanel({
 
         {/* Messages */}
         <div className="flex-1 min-h-0 relative">
-          <div
-            className="h-full overflow-y-auto p-4"
+          <ScrollArea
+            ref={scrollAreaRef}
+            className="h-full"
             data-testid="chat-scroll-container"
-            ref={messagesContainerRef}
             onScroll={handleMessagesScroll}
           >
-            {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center min-h-[calc(100%-1rem)]">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mb-4">
-                  <Sparkles className="h-8 w-8 text-slate-400" />
+            <div className="p-4" ref={contentRef}>
+              {messages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center min-h-[calc(100%-1rem)]">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mb-4">
+                    <Sparkles className="h-8 w-8 text-slate-400" />
+                  </div>
+                  <p className="font-medium text-slate-900 dark:text-slate-100">
+                    {t.devicePanel.readyToHelp}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                    {t.devicePanel.describeTask}
+                  </p>
                 </div>
-                <p className="font-medium text-slate-900 dark:text-slate-100">
-                  {t.devicePanel.readyToHelp}
-                </p>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  {t.devicePanel.describeTask}
-                </p>
-              </div>
-            ) : (
-              messages.map(message => (
-                <div
-                  key={message.id}
-                  className={`flex ${
-                    message.role === 'user' ? 'justify-end' : 'justify-start'
-                  }`}
-                >
-                  {message.role === 'assistant' ? (
-                    <div className="max-w-[85%] space-y-3">
-                      {/* Step process */}
-                      {Array.from(
-                        {
-                          length: Math.max(
-                            message.thinking?.length || 0,
-                            message.actions?.length || 0
-                          ),
-                        },
-                        (_, idx) => idx
-                      ).map(idx => {
-                        const stepThinking = message.thinking?.[idx];
-                        const stepAction = message.actions?.[idx];
-                        const stepScreenshot = message.screenshots?.[idx];
-                        const stepTimings = message.stepTimings?.[idx];
-                        const stepSummary = getStepSummary(
-                          stepThinking,
-                          stepAction
-                        );
+              ) : (
+                messages.map(message => (
+                  <div
+                    key={message.id}
+                    className={`flex ${
+                      message.role === 'user' ? 'justify-end' : 'justify-start'
+                    }`}
+                  >
+                    {message.role === 'assistant' ? (
+                      <div className="max-w-[85%] space-y-3">
+                        {/* Step process */}
+                        {Array.from(
+                          {
+                            length: Math.max(
+                              message.thinking?.length || 0,
+                              message.actions?.length || 0
+                            ),
+                          },
+                          (_, idx) => idx
+                        ).map(idx => {
+                          const stepThinking = message.thinking?.[idx];
+                          const stepAction = message.actions?.[idx];
+                          const stepScreenshot = message.screenshots?.[idx];
+                          const stepTimings = message.stepTimings?.[idx];
+                          const stepSummary = getStepSummary(
+                            stepThinking,
+                            stepAction
+                          );
 
-                        return (
-                          <div
-                            key={idx}
-                            className="bg-slate-100 dark:bg-slate-800 rounded-2xl rounded-tl-sm px-4 py-3"
-                          >
+                          return (
+                            <div
+                              key={idx}
+                              className="bg-slate-100 dark:bg-slate-800 rounded-2xl rounded-tl-sm px-4 py-3"
+                            >
+                              <div className="flex items-center gap-2 mb-2">
+                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1d9bf0]/10">
+                                  <Sparkles className="h-3 w-3 text-[#1d9bf0]" />
+                                </div>
+                                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                  Step {idx + 1}
+                                </span>
+                              </div>
+                              <p className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-300">
+                                {stepSummary}
+                              </p>
+
+                              {stepTimings && (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {getTimingChips(stepTimings).map(chip => (
+                                    <Badge
+                                      key={`${idx}-${chip.label}`}
+                                      variant="secondary"
+                                      className="font-mono text-[11px]"
+                                    >
+                                      {chip.label} {chip.value}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+
+                              {stepScreenshot && (
+                                <div className="mt-3">
+                                  <ImagePreview
+                                    src={`data:image/png;base64,${stepScreenshot}`}
+                                    alt={`Step ${idx + 1}`}
+                                    maxHeight="350px"
+                                  >
+                                    {stepAction &&
+                                      (() => {
+                                        const parsedAction =
+                                          stepAction as ActionPayload;
+                                        const actionName = parsedAction.action;
+
+                                        if (
+                                          actionName &&
+                                          [
+                                            'Tap',
+                                            'Double Tap',
+                                            'Long Press',
+                                          ].includes(actionName)
+                                        ) {
+                                          const element = parsedAction.element;
+                                          if (
+                                            Array.isArray(element) &&
+                                            element.length === 2
+                                          ) {
+                                            const left = `${(Math.max(0, Math.min(element[0], 1000)) / 1000) * 100}%`;
+                                            const top = `${(Math.max(0, Math.min(element[1], 1000)) / 1000) * 100}%`;
+                                            return (
+                                              <div
+                                                className="absolute w-8 h-8 rounded-full border-[3px] border-red-500 bg-red-500/20 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]"
+                                                style={{ left, top }}
+                                              />
+                                            );
+                                          }
+                                        }
+                                        if (actionName === 'Swipe') {
+                                          const start = parsedAction.start;
+                                          const end = parsedAction.end;
+                                          if (
+                                            Array.isArray(start) &&
+                                            start.length === 2 &&
+                                            Array.isArray(end) &&
+                                            end.length === 2
+                                          ) {
+                                            const x1 =
+                                              (Math.max(
+                                                0,
+                                                Math.min(start[0], 1000)
+                                              ) /
+                                                1000) *
+                                              100;
+                                            const y1 =
+                                              (Math.max(
+                                                0,
+                                                Math.min(start[1], 1000)
+                                              ) /
+                                                1000) *
+                                              100;
+                                            const x2 =
+                                              (Math.max(
+                                                0,
+                                                Math.min(end[0], 1000)
+                                              ) /
+                                                1000) *
+                                              100;
+                                            const y2 =
+                                              (Math.max(
+                                                0,
+                                                Math.min(end[1], 1000)
+                                              ) /
+                                                1000) *
+                                              100;
+                                            return (
+                                              <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+                                                <defs>
+                                                  <marker
+                                                    id={`arrowhead-${idx}`}
+                                                    markerWidth="6"
+                                                    markerHeight="6"
+                                                    refX="5"
+                                                    refY="3"
+                                                    orient="auto"
+                                                  >
+                                                    <polygon
+                                                      points="0,0 6,3 0,6"
+                                                      fill="rgba(239,68,68,0.9)"
+                                                    />
+                                                  </marker>
+                                                </defs>
+                                                <circle
+                                                  cx={`${x1}%`}
+                                                  cy={`${y1}%`}
+                                                  r="4"
+                                                  fill="rgba(239,68,68,0.9)"
+                                                />
+                                                <line
+                                                  x1={`${x1}%`}
+                                                  y1={`${y1}%`}
+                                                  x2={`${x2}%`}
+                                                  y2={`${y2}%`}
+                                                  stroke="rgba(239,68,68,0.9)"
+                                                  strokeWidth="3"
+                                                  markerEnd={`url(#arrowhead-${idx})`}
+                                                  strokeDasharray="5 3"
+                                                />
+                                              </svg>
+                                            );
+                                          }
+                                        }
+                                        return null;
+                                      })()}
+                                  </ImagePreview>
+                                </div>
+                              )}
+
+                              {stepAction && (
+                                <details className="mt-2 text-xs">
+                                  <summary className="cursor-pointer text-[#1d9bf0] hover:text-[#1a8cd8] transition-colors">
+                                    View action
+                                  </summary>
+                                  <pre className="mt-2 p-2 bg-slate-900 text-slate-200 rounded-lg overflow-x-auto text-xs border border-slate-800">
+                                    {JSON.stringify(stepAction, null, 2)}
+                                  </pre>
+                                </details>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {/* Current thinking being streamed */}
+                        {message.currentThinking && (
+                          <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl rounded-tl-sm px-4 py-3">
                             <div className="flex items-center gap-2 mb-2">
                               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1d9bf0]/10">
-                                <Sparkles className="h-3 w-3 text-[#1d9bf0]" />
+                                <Sparkles className="h-3 w-3 text-[#1d9bf0] animate-pulse" />
                               </div>
                               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                                Step {idx + 1}
+                                Thinking...
                               </span>
                             </div>
                             <p className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-300">
-                              {stepSummary}
+                              {message.currentThinking}
+                              <span className="inline-block w-1 h-4 ml-0.5 bg-[#1d9bf0] animate-pulse" />
                             </p>
-
-                            {stepTimings && (
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                {getTimingChips(stepTimings).map(chip => (
-                                  <Badge
-                                    key={`${idx}-${chip.label}`}
-                                    variant="secondary"
-                                    className="font-mono text-[11px]"
-                                  >
-                                    {chip.label} {chip.value}
-                                  </Badge>
-                                ))}
-                              </div>
-                            )}
-
-                            {stepScreenshot && (
-                              <div className="mt-3">
-                                <ImagePreview
-                                  src={`data:image/png;base64,${stepScreenshot}`}
-                                  alt={`Step ${idx + 1}`}
-                                  maxHeight="350px"
-                                >
-                                  {stepAction &&
-                                    (() => {
-                                      const parsedAction =
-                                        stepAction as ActionPayload;
-                                      const actionName = parsedAction.action;
-
-                                      if (
-                                        actionName &&
-                                        [
-                                          'Tap',
-                                          'Double Tap',
-                                          'Long Press',
-                                        ].includes(actionName)
-                                      ) {
-                                        const element = parsedAction.element;
-                                        if (
-                                          Array.isArray(element) &&
-                                          element.length === 2
-                                        ) {
-                                          const left = `${(Math.max(0, Math.min(element[0], 1000)) / 1000) * 100}%`;
-                                          const top = `${(Math.max(0, Math.min(element[1], 1000)) / 1000) * 100}%`;
-                                          return (
-                                            <div
-                                              className="absolute w-8 h-8 rounded-full border-[3px] border-red-500 bg-red-500/20 transform -translate-x-1/2 -translate-y-1/2 pointer-events-none animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.6)]"
-                                              style={{ left, top }}
-                                            />
-                                          );
-                                        }
-                                      }
-                                      if (actionName === 'Swipe') {
-                                        const start = parsedAction.start;
-                                        const end = parsedAction.end;
-                                        if (
-                                          Array.isArray(start) &&
-                                          start.length === 2 &&
-                                          Array.isArray(end) &&
-                                          end.length === 2
-                                        ) {
-                                          const x1 =
-                                            (Math.max(
-                                              0,
-                                              Math.min(start[0], 1000)
-                                            ) /
-                                              1000) *
-                                            100;
-                                          const y1 =
-                                            (Math.max(
-                                              0,
-                                              Math.min(start[1], 1000)
-                                            ) /
-                                              1000) *
-                                            100;
-                                          const x2 =
-                                            (Math.max(
-                                              0,
-                                              Math.min(end[0], 1000)
-                                            ) /
-                                              1000) *
-                                            100;
-                                          const y2 =
-                                            (Math.max(
-                                              0,
-                                              Math.min(end[1], 1000)
-                                            ) /
-                                              1000) *
-                                            100;
-                                          return (
-                                            <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
-                                              <defs>
-                                                <marker
-                                                  id={`arrowhead-${idx}`}
-                                                  markerWidth="6"
-                                                  markerHeight="6"
-                                                  refX="5"
-                                                  refY="3"
-                                                  orient="auto"
-                                                >
-                                                  <polygon
-                                                    points="0,0 6,3 0,6"
-                                                    fill="rgba(239,68,68,0.9)"
-                                                  />
-                                                </marker>
-                                              </defs>
-                                              <circle
-                                                cx={`${x1}%`}
-                                                cy={`${y1}%`}
-                                                r="4"
-                                                fill="rgba(239,68,68,0.9)"
-                                              />
-                                              <line
-                                                x1={`${x1}%`}
-                                                y1={`${y1}%`}
-                                                x2={`${x2}%`}
-                                                y2={`${y2}%`}
-                                                stroke="rgba(239,68,68,0.9)"
-                                                strokeWidth="3"
-                                                markerEnd={`url(#arrowhead-${idx})`}
-                                                strokeDasharray="5 3"
-                                              />
-                                            </svg>
-                                          );
-                                        }
-                                      }
-                                      return null;
-                                    })()}
-                                </ImagePreview>
-                              </div>
-                            )}
-
-                            {stepAction && (
-                              <details className="mt-2 text-xs">
-                                <summary className="cursor-pointer text-[#1d9bf0] hover:text-[#1a8cd8] transition-colors">
-                                  View action
-                                </summary>
-                                <pre className="mt-2 p-2 bg-slate-900 text-slate-200 rounded-lg overflow-x-auto text-xs border border-slate-800">
-                                  {JSON.stringify(stepAction, null, 2)}
-                                </pre>
-                              </details>
-                            )}
                           </div>
-                        );
-                      })}
+                        )}
 
-                      {/* Current thinking being streamed */}
-                      {message.currentThinking && (
-                        <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl rounded-tl-sm px-4 py-3">
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#1d9bf0]/10">
-                              <Sparkles className="h-3 w-3 text-[#1d9bf0] animate-pulse" />
-                            </div>
-                            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                              Thinking...
-                            </span>
-                          </div>
-                          <p className="text-sm whitespace-pre-wrap text-slate-700 dark:text-slate-300">
-                            {message.currentThinking}
-                            <span className="inline-block w-1 h-4 ml-0.5 bg-[#1d9bf0] animate-pulse" />
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Final result */}
-                      {message.content && (
-                        <div
-                          className={`
+                        {/* Final result */}
+                        {message.content && (
+                          <div
+                            className={`
                           rounded-2xl px-4 py-3 flex items-start gap-2
                           ${
                             message.success === false
@@ -802,50 +831,52 @@ export function DevicePanel({
                               : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
                           }
                         `}
-                        >
-                          <CheckCircle2
-                            className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-                              message.success === false
-                                ? 'text-red-500'
-                                : 'text-green-500'
-                            }`}
-                          />
-                          <div>
-                            <p className="whitespace-pre-wrap">
-                              {message.content}
-                            </p>
-                            {message.steps !== undefined && (
-                              <p className="text-xs mt-2 opacity-60 text-slate-500 dark:text-slate-400">
-                                {message.steps} steps completed
+                          >
+                            <CheckCircle2
+                              className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+                                message.success === false
+                                  ? 'text-red-500'
+                                  : 'text-green-500'
+                              }`}
+                            />
+                            <div>
+                              <p className="whitespace-pre-wrap">
+                                {message.content}
                               </p>
-                            )}
+                              {message.steps !== undefined && (
+                                <p className="text-xs mt-2 opacity-60 text-slate-500 dark:text-slate-400">
+                                  {message.steps} steps completed
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        )}
 
-                      {/* Streaming indicator */}
-                      {message.isStreaming && (
-                        <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Processing...
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="max-w-[75%]">
-                      <div className="chat-bubble-user px-4 py-3">
-                        <p className="whitespace-pre-wrap">{message.content}</p>
+                        {/* Streaming indicator */}
+                        {message.isStreaming && (
+                          <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Processing...
+                          </div>
+                        )}
                       </div>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 text-right">
-                        {message.timestamp.toLocaleTimeString()}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-            <div ref={messagesEndRef} />
-          </div>
+                    ) : (
+                      <div className="max-w-[75%]">
+                        <div className="chat-bubble-user px-4 py-3">
+                          <p className="whitespace-pre-wrap">
+                            {message.content}
+                          </p>
+                        </div>
+                        <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 text-right">
+                          {message.timestamp.toLocaleTimeString()}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </ScrollArea>
           {showNewMessageNotice && (
             <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
               <Button
