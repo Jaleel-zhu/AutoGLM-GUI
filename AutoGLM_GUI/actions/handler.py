@@ -128,6 +128,8 @@ class ActionHandler:
             "Wait": self._handle_wait,
             "Take_over": self._handle_takeover,
             "Note": self._handle_note,
+            "Call_API": self._handle_call_api,
+            "Interact": self._handle_interact,
         }
         return handlers.get(action_name)
 
@@ -292,6 +294,21 @@ class ActionHandler:
         self, action: dict[str, Any], width: int, height: int
     ) -> ActionResult:
         return ActionResult(True, False)
+
+    def _handle_call_api(
+        self, action: dict[str, Any], width: int, height: int
+    ) -> ActionResult:
+        """Handle API call action (placeholder for summarization)."""
+        # This action is typically used for content summarization
+        # Implementation depends on specific requirements
+        return ActionResult(True, False)
+
+    def _handle_interact(
+        self, action: dict[str, Any], width: int, height: int
+    ) -> ActionResult:
+        """Handle interaction request (user choice needed)."""
+        # This action signals that user input is needed
+        return ActionResult(True, False, message="User interaction required")
 
     @staticmethod
     def _default_confirmation(message: str) -> bool:
