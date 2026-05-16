@@ -14,7 +14,7 @@ export function MarkdownContent({
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
-      className={`prose prose-sm dark:prose-invert max-w-none ${className}`}
+      className={`prose dark:prose-invert max-w-none prose-pre:text-sm prose-code:text-sm ${className}`}
       components={
         {
           table: ({ ...props }) => (
