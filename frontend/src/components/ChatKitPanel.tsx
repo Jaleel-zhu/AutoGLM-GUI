@@ -844,7 +844,7 @@ export function ChatKitPanel({
                       <div className="flex justify-end">
                         <div className="max-w-[80%]">
                           <div className="bg-purple-600 text-white px-4 py-2 rounded-2xl rounded-br-sm">
-                            <MarkdownContent content={message.content} />
+                            <MarkdownContent content={message.content} prose={false} />
                           </div>
                           <p className="text-xs text-slate-400 mt-1 text-right">
                             {message.timestamp.toLocaleTimeString()}

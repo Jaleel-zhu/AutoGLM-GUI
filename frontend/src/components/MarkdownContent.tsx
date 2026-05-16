@@ -1,20 +1,23 @@
 import ReactMarkdown from 'react-markdown';
+import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
 
 interface MarkdownContentProps {
   content: string;
   className?: string;
+  prose?: boolean;
 }
 
 export function MarkdownContent({
   content,
   className = '',
+  prose = true,
 }: MarkdownContentProps) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      className={`prose dark:prose-invert max-w-none prose-pre:text-sm prose-code:text-sm ${className}`}
+      remarkPlugins={[remarkGfm, remarkBreaks]}
+      className={`${prose ? 'prose dark:prose-invert max-w-none prose-pre:text-sm prose-code:text-sm' : 'whitespace-pre-wrap'} ${className}`}
       components={
         {
           table: ({ ...props }) => (
