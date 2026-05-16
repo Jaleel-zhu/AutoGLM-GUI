@@ -17,12 +17,12 @@ export function MarkdownContent({
       className={`prose prose-sm dark:prose-invert max-w-none ${className}`}
       components={
         {
-          table: ({ node, ...props }) => (
+          table: ({ ...props }) => (
             <div className="overflow-x-auto">
               <table {...props} />
             </div>
           ),
-          code: ({ node, ...props }) => {
+          code: ({ ...props }) => {
             const isInline = !props.className?.includes('language-');
             return isInline ? (
               <code className="whitespace-nowrap" {...props} />
