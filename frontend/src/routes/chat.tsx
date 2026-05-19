@@ -264,8 +264,14 @@ function ChatComponent() {
   const [showConfig, setShowConfig] = useState(false);
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [modelConnectionTesting, setModelConnectionTesting] = useState(false);
-  const [modelConnectionResult, setModelConnectionResult] = useState<{
+  const [visionConnectionTesting, setVisionConnectionTesting] = useState(false);
+  const [visionConnectionResult, setVisionConnectionResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [decisionConnectionTesting, setDecisionConnectionTesting] =
+    useState(false);
+  const [decisionConnectionResult, setDecisionConnectionResult] = useState<{
     success: boolean;
     message: string;
   } | null>(null);
@@ -536,24 +542,33 @@ function ChatComponent() {
   const handleModelConnectionCheck = async (
     baseUrl: string,
     modelName: string,
-    apiKey: string
+    apiKey: string,
+    tab: 'vision' | 'decision'
   ) => {
-    setModelConnectionTesting(true);
-    setModelConnectionResult(null);
+    const setTesting =
+      tab === 'vision'
+        ? setVisionConnectionTesting
+        : setDecisionConnectionTesting;
+    const setResult =
+      tab === 'vision'
+        ? setVisionConnectionResult
+        : setDecisionConnectionResult;
+    setTesting(true);
+    setResult(null);
     try {
       const result = await modelServiceConnection({
         base_url: baseUrl,
         model_name: modelName,
         api_key: apiKey || undefined,
       });
-      setModelConnectionResult(result);
+      setResult(result);
     } catch (err) {
-      setModelConnectionResult({
+      setResult({
         success: false,
         message: getErrorMessage(err),
       });
     } finally {
-      setModelConnectionTesting(false);
+      setTesting(false);
     }
   };
 
@@ -776,7 +791,7 @@ function ChatComponent() {
                   variant="outline"
                   size="sm"
                   disabled={
-                    modelConnectionTesting ||
+                    visionConnectionTesting ||
                     !tempConfig.base_url ||
                     !tempConfig.model_name
                   }
@@ -784,12 +799,13 @@ function ChatComponent() {
                     handleModelConnectionCheck(
                       tempConfig.base_url,
                       tempConfig.model_name,
-                      tempConfig.api_key
+                      tempConfig.api_key,
+                      'vision'
                     )
                   }
                   className="w-full"
                 >
-                  {modelConnectionTesting ? (
+                  {visionConnectionTesting ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       {t.chat.testingConnection}
@@ -798,20 +814,20 @@ function ChatComponent() {
                     t.chat.testConnection
                   )}
                 </Button>
-                {modelConnectionResult && (
+                {visionConnectionResult && (
                   <p
                     className={`text-xs flex items-center gap-1 ${
-                      modelConnectionResult.success
+                      visionConnectionResult.success
                         ? 'text-green-600 dark:text-green-400'
                         : 'text-red-500 dark:text-red-400'
                     }`}
                   >
-                    {modelConnectionResult.success ? (
+                    {visionConnectionResult.success ? (
                       <CheckCircle2 className="w-3 h-3" />
                     ) : (
                       <AlertCircle className="w-3 h-3" />
                     )}
-                    {modelConnectionResult.message}
+                    {visionConnectionResult.message}
                   </p>
                 )}
               </div>
@@ -1162,7 +1178,7 @@ function ChatComponent() {
                   variant="outline"
                   size="sm"
                   disabled={
-                    modelConnectionTesting ||
+                    decisionConnectionTesting ||
                     !tempConfig.decision_base_url ||
                     !tempConfig.decision_model_name
                   }
@@ -1170,12 +1186,13 @@ function ChatComponent() {
                     handleModelConnectionCheck(
                       tempConfig.decision_base_url,
                       tempConfig.decision_model_name,
-                      tempConfig.decision_api_key
+                      tempConfig.decision_api_key,
+                      'decision'
                     )
                   }
                   className="w-full"
                 >
-                  {modelConnectionTesting ? (
+                  {decisionConnectionTesting ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       {t.chat.testingConnection}
@@ -1184,20 +1201,20 @@ function ChatComponent() {
                     t.chat.testConnection
                   )}
                 </Button>
-                {modelConnectionResult && (
+                {decisionConnectionResult && (
                   <p
                     className={`text-xs flex items-center gap-1 ${
-                      modelConnectionResult.success
+                      decisionConnectionResult.success
                         ? 'text-green-600 dark:text-green-400'
                         : 'text-red-500 dark:text-red-400'
                     }`}
                   >
-                    {modelConnectionResult.success ? (
+                    {decisionConnectionResult.success ? (
                       <CheckCircle2 className="w-3 h-3" />
                     ) : (
                       <AlertCircle className="w-3 h-3" />
                     )}
-                    {modelConnectionResult.message}
+                    {decisionConnectionResult.message}
                   </p>
                 )}
               </div>
@@ -1209,7 +1226,8 @@ function ChatComponent() {
               variant="outline"
               onClick={() => {
                 setShowConfig(false);
-                setModelConnectionResult(null);
+                setVisionConnectionResult(null);
+                setDecisionConnectionResult(null);
                 if (config) {
                   setTempConfig({
                     base_url: config.base_url,
