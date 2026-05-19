@@ -56,6 +56,10 @@ export const en = {
     decisionModelName: 'Decision Model Name',
     decisionModelHint:
       'Decision model is used for planning in layered agent mode. You must configure the decision model when using layered agent mode.',
+    testConnection: 'Test Connection',
+    testingConnection: 'Testing...',
+    connectionSuccess: 'Connection successful',
+    connectionFailed: 'Connection failed',
   },
   deviceSidebar: {
     devices: 'Devices',

@@ -56,6 +56,10 @@ export const zh = {
     decisionModelName: '决策模型名称',
     decisionModelHint:
       '决策模型用于分层代理的规划层。使用分层代理模式时必须配置决策模型。',
+    testConnection: '测试连接',
+    testingConnection: '测试中...',
+    connectionSuccess: '连接成功',
+    connectionFailed: '连接失败',
   },
   deviceSidebar: {
     devices: '设备',
