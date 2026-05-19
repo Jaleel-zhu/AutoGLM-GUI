@@ -7,6 +7,7 @@ import {
   listDevices,
   getConfig,
   saveConfig,
+  modelServiceConnection,
   getErrorMessage,
   type Device,
   type ConfigSaveRequest,
@@ -47,6 +48,7 @@ import {
   Cpu,
   Info,
   Smartphone,
+  Loader2,
 } from 'lucide-react';
 import { useTranslation } from '../lib/i18n-context';
 import { usePageVisibility } from '../hooks/usePageVisibility';
@@ -262,6 +264,17 @@ function ChatComponent() {
   const [showConfig, setShowConfig] = useState(false);
   const [showGroupManager, setShowGroupManager] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
+  const [visionConnectionTesting, setVisionConnectionTesting] = useState(false);
+  const [visionConnectionResult, setVisionConnectionResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [decisionConnectionTesting, setDecisionConnectionTesting] =
+    useState(false);
+  const [decisionConnectionResult, setDecisionConnectionResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
   const isLoadingDevicesRef = React.useRef(false);
   const [tempConfig, setTempConfig] = useState({
     base_url: VISION_PRESETS[0].config.base_url as string,
@@ -526,6 +539,39 @@ function ChatComponent() {
     }
   };
 
+  const handleModelConnectionCheck = async (
+    baseUrl: string,
+    modelName: string,
+    apiKey: string,
+    tab: 'vision' | 'decision'
+  ) => {
+    const setTesting =
+      tab === 'vision'
+        ? setVisionConnectionTesting
+        : setDecisionConnectionTesting;
+    const setResult =
+      tab === 'vision'
+        ? setVisionConnectionResult
+        : setDecisionConnectionResult;
+    setTesting(true);
+    setResult(null);
+    try {
+      const result = await modelServiceConnection({
+        base_url: baseUrl,
+        model_name: modelName,
+        api_key: apiKey || undefined,
+      });
+      setResult(result);
+    } catch (err) {
+      setResult({
+        success: false,
+        message: getErrorMessage(err),
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const handleConnectWifi = async (deviceId: string) => {
     try {
       const res = await connectWifi({ device_id: deviceId });
@@ -736,6 +782,54 @@ function ChatComponent() {
                   }
                   placeholder="autoglm-phone-9b"
                 />
+              </div>
+
+              {/* 服务连通性测试 */}
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    visionConnectionTesting ||
+                    !tempConfig.base_url ||
+                    !tempConfig.model_name
+                  }
+                  onClick={() =>
+                    handleModelConnectionCheck(
+                      tempConfig.base_url,
+                      tempConfig.model_name,
+                      tempConfig.api_key,
+                      'vision'
+                    )
+                  }
+                  className="w-full"
+                >
+                  {visionConnectionTesting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {t.chat.testingConnection}
+                    </>
+                  ) : (
+                    t.chat.testConnection
+                  )}
+                </Button>
+                {visionConnectionResult && (
+                  <p
+                    className={`text-xs flex items-center gap-1 ${
+                      visionConnectionResult.success
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-red-500 dark:text-red-400'
+                    }`}
+                  >
+                    {visionConnectionResult.success ? (
+                      <CheckCircle2 className="w-3 h-3" />
+                    ) : (
+                      <AlertCircle className="w-3 h-3" />
+                    )}
+                    {visionConnectionResult.message}
+                  </p>
+                )}
               </div>
 
               {/* Agent 类型选择 */}
@@ -1076,6 +1170,54 @@ function ChatComponent() {
                   placeholder=""
                 />
               </div>
+
+              {/* Decision Model 连通性测试 */}
+              <div className="space-y-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    decisionConnectionTesting ||
+                    !tempConfig.decision_base_url ||
+                    !tempConfig.decision_model_name
+                  }
+                  onClick={() =>
+                    handleModelConnectionCheck(
+                      tempConfig.decision_base_url,
+                      tempConfig.decision_model_name,
+                      tempConfig.decision_api_key,
+                      'decision'
+                    )
+                  }
+                  className="w-full"
+                >
+                  {decisionConnectionTesting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {t.chat.testingConnection}
+                    </>
+                  ) : (
+                    t.chat.testConnection
+                  )}
+                </Button>
+                {decisionConnectionResult && (
+                  <p
+                    className={`text-xs flex items-center gap-1 ${
+                      decisionConnectionResult.success
+                        ? 'text-green-600 dark:text-green-400'
+                        : 'text-red-500 dark:text-red-400'
+                    }`}
+                  >
+                    {decisionConnectionResult.success ? (
+                      <CheckCircle2 className="w-3 h-3" />
+                    ) : (
+                      <AlertCircle className="w-3 h-3" />
+                    )}
+                    {decisionConnectionResult.message}
+                  </p>
+                )}
+              </div>
             </TabsContent>
           </Tabs>
 
@@ -1084,6 +1226,8 @@ function ChatComponent() {
               variant="outline"
               onClick={() => {
                 setShowConfig(false);
+                setVisionConnectionResult(null);
+                setDecisionConnectionResult(null);
                 if (config) {
                   setTempConfig({
                     base_url: config.base_url,
