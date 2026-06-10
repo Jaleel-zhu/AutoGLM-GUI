@@ -402,7 +402,7 @@ wheels = [
 
 [[package]]
 name = "autoglm-gui"
-version = "1.5.16"
+version = "1.5.18"
 source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
