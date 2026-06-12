@@ -12,11 +12,17 @@ import pytest
 
 def _run_autoglm_server(port: int, llm_url: str, trace_file: str):
     """Run AutoGLM-GUI server in a subprocess."""
+    import os
+
+    # Start coverage in subprocess when COVERAGE_PROCESS_START is set.
+    if os.environ.get("COVERAGE_PROCESS_START"):
+        import coverage
+
+        coverage.process_startup()
+
     import uvicorn
 
     # Delete config file to use environment variables
-    import os
-
     os.environ["AUTOGLM_BASE_URL"] = llm_url + "/v1"
     os.environ["AUTOGLM_MODEL_NAME"] = "mock-glm-model"
     os.environ["AUTOGLM_API_KEY"] = "mock-key"
@@ -99,16 +105,30 @@ def wechat_test_case(scenarios_dir: Path) -> Path:
 
 def _run_llm_server(port: int):
     """Run the mock LLM server in a subprocess."""
-    from tests.integration.device_agent.mock_llm_server import run_server
+    import os
+
+    if os.environ.get("COVERAGE_PROCESS_START"):
+        import coverage
+
+        coverage.process_startup()
+
+    from tests.e2e.device_agent.mock_llm_server import run_server
 
     run_server(port=port, log_level="warning")
 
 
 def _run_agent_server(port: int, scenario_path: str | None = None):
     """Run the mock agent server in a subprocess."""
+    import os
+
+    if os.environ.get("COVERAGE_PROCESS_START"):
+        import coverage
+
+        coverage.process_startup()
+
     import uvicorn
 
-    from tests.integration.device_agent.mock_agent_server import create_app
+    from tests.e2e.device_agent.mock_agent_server import create_app
 
     app = create_app(scenario_path=scenario_path)
     uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")
@@ -201,7 +221,7 @@ def mock_llm_client(mock_llm_server: str):
             # Verify LLM was called
             mock_llm_client.assert_request_count(2)
     """
-    from tests.integration.device_agent.mock_llm_client import MockLLMTestClient
+    from tests.e2e.device_agent.mock_llm_client import MockLLMTestClient
 
     client = MockLLMTestClient(mock_llm_server)
     client.reset()
@@ -225,7 +245,7 @@ def test_client(mock_agent_server: str):
             commands = test_client.get_commands()
             assert commands[0]["params"]["x"] == 100
     """
-    from tests.integration.device_agent.test_client import MockAgentTestClient
+    from tests.e2e.device_agent.test_client import MockAgentTestClient
 
     client = MockAgentTestClient(mock_agent_server)
     client.reset()
@@ -234,9 +254,16 @@ def test_client(mock_agent_server: str):
 
 def _run_multi_agent_server(port: int):
     """Run the mock agent server with multiple devices configured."""
+    import os
+
+    if os.environ.get("COVERAGE_PROCESS_START"):
+        import coverage
+
+        coverage.process_startup()
+
     import uvicorn
 
-    from tests.integration.device_agent.mock_agent_server import (
+    from tests.e2e.device_agent.mock_agent_server import (
         create_app,
         state,
     )

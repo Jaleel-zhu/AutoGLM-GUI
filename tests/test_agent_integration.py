@@ -4,7 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from tests.integration.test_runner import TestRunner
+from tests.e2e.test_runner import TestRunner
+
+
+pytestmark = [pytest.mark.integration]
 
 
 class TestAgentIntegration:
@@ -64,7 +67,7 @@ finish(message="已成功点击消息按钮！现在进入了消息页面，可�
 
     def test_state_machine_loading(self, sample_test_case: Path):
         """Test that test case loads correctly."""
-        from tests.integration.state_machine import load_test_case
+        from tests.e2e.state_machine import load_test_case
 
         state_machine, instruction, max_steps = load_test_case(sample_test_case)
 
