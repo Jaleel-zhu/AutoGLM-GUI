@@ -22,6 +22,17 @@ function resolveBuildCommit() {
   }
 }
 
+/**
+ * Resolve the backend proxy target for the Vite dev server.
+ *
+ * During E2E tests, `frontend/e2e/startE2EStack.mjs` sets `VITE_PROXY_TARGET`
+ * from `frontend/e2e/.service_urls.json` before starting
+ * Vite.  For manual `pnpm dev` usage, fall back to the historical fixed port.
+ */
+function resolveBackendProxyTarget() {
+  return process.env.VITE_PROXY_TARGET || 'http://localhost:8000';
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   define: {
@@ -43,12 +54,12 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: resolveBackendProxyTarget(),
         changeOrigin: true,
         ws: true,
       },
       '/socket.io': {
-        target: 'http://localhost:8000',
+        target: resolveBackendProxyTarget(),
         changeOrigin: true,
         ws: true,
       },

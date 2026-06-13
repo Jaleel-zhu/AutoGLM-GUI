@@ -3,7 +3,7 @@
  *
  * Requires the backend services (mock LLM + mock agent + AutoGLM-GUI)
  * to be running.  The Playwright config starts them via
- * scripts/start_e2e_services.py.
+ * frontend/e2e/startE2EStack.mjs.
  *
  * Covers issue #346: in classic mode (DevicePanel) the chat must stay pinned
  * to the latest message while the agent streams its response, as long as the
@@ -32,7 +32,11 @@ declare global {
 const VIEWPORT_SELECTOR =
   '[data-testid="chat-scroll-container"] [data-slot="scroll-area-viewport"]';
 
-function readServiceUrls(): { backend_url: string; agent_url: string } {
+function readServiceUrls(): {
+  backend_url: string;
+  agent_url: string;
+  llm_url: string;
+} {
   const urlsPath = path.resolve(__dirname, '.service_urls.json');
   if (!fs.existsSync(urlsPath)) {
     throw new Error(
@@ -47,7 +51,7 @@ test.describe('DevicePanel auto-scroll', () => {
     page,
     request,
   }) => {
-    const { backend_url, agent_url } = readServiceUrls();
+    const { backend_url, agent_url, llm_url } = readServiceUrls();
 
     // ── 1. Configure backend (device + LLM config) ──────────────────────
 
@@ -67,7 +71,7 @@ test.describe('DevicePanel auto-scroll', () => {
     await request.delete(`${backend_url}/api/config`);
     const configRes = await request.post(`${backend_url}/api/config`, {
       data: {
-        base_url: 'http://localhost:18003/v1',
+        base_url: `${llm_url}/v1`,
         model_name: 'mock-glm-model',
         api_key: 'mock-key',
         agent_type: 'glm-async',
@@ -77,7 +81,7 @@ test.describe('DevicePanel auto-scroll', () => {
 
     // Set multiple mock LLM responses so the agent produces enough content
     // to overflow the scroll container (5 steps ≈ plenty of scrolling needed)
-    await request.post('http://localhost:18003/test/set_responses', {
+    await request.post(`${llm_url}/test/set_responses`, {
       data: [
         '用户要求点击屏幕下方的消息按钮。我看到底部导航栏有消息按钮。do(action="Tap", element=[499,966])',
         '好的，点击成功，进入了消息页面。finish(message="已成功点击消息按钮！")',
@@ -86,13 +90,15 @@ test.describe('DevicePanel auto-scroll', () => {
         '所有任务已完成。finish(message="任务完成")',
       ],
     });
-    await request.post('http://localhost:18003/test/reset');
+    await request.post(`${llm_url}/test/reset`);
 
     // ── 2. Navigate to frontend ─────────────────────────────────────────
 
     // Use a smaller viewport so chat content overflows the scroll container.
     // If content fits without scrolling, the auto-scroll test is meaningless.
-    await page.setViewportSize({ width: 1280, height: 500 });
+    // 400px is chosen to force overflow on Windows runners too, where the
+    // default font metrics make message bubbles shorter than on macOS.
+    await page.setViewportSize({ width: 1280, height: 400 });
 
     await page.goto(
       `/chat?serial=${encodeURIComponent(deviceSerial)}&mode=classic`
