@@ -136,16 +136,37 @@ class FakePhoneAgentManager:
     def get_agent_with_context(self, device_id: str, **kwargs):
         return self.agent
 
+    async def get_agent_with_context_async(self, device_id: str, **kwargs):
+        return self.get_agent_with_context(device_id, **kwargs)
+
     def register_abort_handler(self, device_id: str, handler, context=None) -> None:
+        self.registered.append((device_id, context))
+
+    async def register_abort_handler_async(
+        self, device_id: str, handler, context=None
+    ) -> None:
         self.registered.append((device_id, context))
 
     def unregister_abort_handler(self, device_id: str, context=None) -> None:
         self.unregistered.append((device_id, context))
 
+    async def unregister_abort_handler_async(
+        self, device_id: str, context=None
+    ) -> None:
+        self.unregistered.append((device_id, context))
+
     def set_error_state(self, device_id: str, message: str, context=None) -> None:
         self.errors.append((device_id, message, context))
 
+    async def set_error_state_async(
+        self, device_id: str, message: str, context=None
+    ) -> None:
+        self.errors.append((device_id, message, context))
+
     def release_device(self, device_id: str, context=None) -> None:
+        self.released.append((device_id, context))
+
+    async def release_device_async(self, device_id: str, context=None) -> None:
         self.released.append((device_id, context))
 
 
@@ -178,6 +199,9 @@ def test_phone_agent_manager_lifecycle_state_and_abort(
 
         def get_device_protocol(self, device_id: str):
             return SimpleNamespace(device_id=device_id)
+
+        def get_async_device_protocol(self, device_id: str):
+            return self.get_device_protocol(device_id)
 
         def force_refresh(self) -> None:
             self.refreshed = True
@@ -285,6 +309,9 @@ def test_phone_agent_manager_auto_init_errors_and_destroy_all(
             if self.calls == 1:
                 raise ValueError("missing")
             return SimpleNamespace(device_id=device_id)
+
+        def get_async_device_protocol(self, device_id: str):
+            return self.get_device_protocol(device_id)
 
         def force_refresh(self) -> None:
             self.refreshed = True
